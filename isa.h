@@ -5,7 +5,8 @@
 #include <optional>
 #include <string>
 
-namespace risc201 {
+namespace risc201 
+{
 
 // ------------------------------------------------------------------
 // Processor Architecture Constants
