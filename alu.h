@@ -1,6 +1,7 @@
 #pragma once
 #include 
 #include "isa.h"
+using Opcode = risc201::OperationCode;
 using namespace std;
 using namespace risc201;
 class ALUFlag
