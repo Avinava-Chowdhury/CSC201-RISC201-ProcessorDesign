@@ -3,7 +3,7 @@
 #include "isa.h"
 using namespace std;
 using namespace risc201;
-class ALUFlags 
+class ALUFlag
 {
    public:
        bool zero;      // true if the result is exactly 0
@@ -14,7 +14,7 @@ class ALUResult
 {
    public:
        int32_t  value;
-       ALUFlags flags;
+       ALUFlag flags;
 };
 //dispatcher function
 ALUResult execute(Opcode op, int32_t operand1, int32_t operand2);
