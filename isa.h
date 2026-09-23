@@ -143,12 +143,10 @@ inline bool canFitInUnsignedSpace(int64_t value, int availableBits) {
 inline int32_t extendSignBit(uint32_t value, int originalBitCount) {
     value &= (originalBitCount == 32) ? 0xFFFFFFFFu : ((1u << originalBitCount) - 1);
     uint32_t signMask = 1u << (originalBitCount - 1);
-    return static_cast((value ^ signMask) - signMask);
-}
+return static_cast<int32_t>((value ^ signMask) - signMask);}
 
 uint32_t convertToBinary(const DecodedInstruction& instructionStruct);
-std::optional convertFromBinary(uint32_t rawBinaryWord);
-
+std::optional<DecodedInstruction> convertFromBinary(uint32_t rawBinaryWord);
 
 // Processor Status Flags
 // A hidden scratchpad that remembers the result of the last 'cmp' (compare) instruction.

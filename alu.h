@@ -1,5 +1,5 @@
 #pragma once
-#include 
+#include <cstdint>
 #include "isa.h"
 using Opcode = risc201::OperationCode;
 using namespace std;
