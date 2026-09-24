@@ -42,9 +42,9 @@ enum class OperationCode : uint8_t
     LSL = 10, LSR = 11, ASR = 12,
     NOP = 13,
     LD  = 14, ST  = 15,
-    BEQ = 16, BGT = 17, B = 18, CALL = 19, RET = 20
+    BEQ = 16, BGT = 17, B = 18, CALL = 19, RET = 20,
+    NEG = 21, ABS = 22, MIN = 23, MAX = 24
 };
-
 
 // Instruction Layouts
 // Think of the 32-bit instruction as a train with specific cargo cars. 
