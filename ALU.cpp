@@ -279,32 +279,77 @@ ALUResult computeLogical(Opcode op, int32_t a, int32_t b)
     switch (op) 
     {
         case Opcode::AND:
-            // TODO (Khushi): Implement bitwise AND.
+        case Opcode::AND: {
+            int32_t out = 0;
+            for (int i = 0; i < 32; i++) {
+                int bitA = (a >> i) & 1;        // extract bit i of a
+                int bitB = (b >> i) & 1;        // extract bit i of b
+                int bitResult = bitA & bitB;    // AND gate for this bit position
+                out |= (bitResult << i);        // place result bit back
+            }
+            result.value = out;
             break;
       
         case Opcode::OR:
             // TODO (Khushi): Implement bitwise OR.
+        case Opcode::OR: {
+            int32_t out = 0;
+            for (int i = 0; i < 32; i++) {
+                int bitA = (a >> i) & 1;
+                int bitB = (b >> i) & 1;
+                int bitResult = bitA | bitB;    // OR gate for this bit position
+                out |= (bitResult << i);
+            }
+            result.value = out;
             break;
+        }
       
-        case Opcode::NOT:
+       case Opcode::NOT:
             // TODO (Khushi): Implement bitwise NOT on operand 'a'.
+        case Opcode::NOT: {
+            // NOT is SINGLE_ARG (skips sourceRegister1 per isa.h), so the real input is 'b'
+            int32_t out = 0;
+            for (int i = 0; i < 32; i++) {
+                int bitB = (b >> i) & 1;
+                int bitResult = bitB ^ 1;       // inverter: flips the bit (1->0, 0->1)
+                out |= (bitResult << i);
+            }
+            result.value = out;
             break;
+        }
       
-        case Opcode::MOV:
+       case Opcode::MOV:
             // TODO (Khushi): Implement MOV (usually result.value = b or a, depending on setup).
+        case Opcode::MOV: {
+            // MOV is SINGLE_ARG (skips sourceRegister1 per isa.h), so the real input is 'b'
+            // Pure pass-through (MUX select), rebuilt bit-by-bit for consistency
+            int32_t out = 0;
+            for (int i = 0; i < 32; i++) {
+                int bitB = (b >> i) & 1;
+                out |= (bitB << i);
+            }
+            result.value = out;
             break;
+        }
       
         case Opcode::CMP:
             // TODO (Khushi): CMP does not output a number to a register, 
             // but you should subtract 'b' from 'a' just to check if the result is zero.
             // (Note: The actual GT and E flags are handled in isa.h, so just handle 'zero' here).
+        case Opcode::CMP: {
+            // COMPARE_ONLY: reuses subtractor logic (a - b), only the zero flag matters here.
+            // Real E/GT flags are handled separately by evaluateComparison() in isa.h.
+            int64_t wide = (int64_t)a - (int64_t)b;
+            result.value = (int32_t)wide;
             break;
+        }
       
         default:
             break;
     }
 
     // TODO (Khushi): Set result.flags.zero = true if result.value is exactly 0.
+    result.flags.zero = (result.value == 0);
     return result;
 }
 
