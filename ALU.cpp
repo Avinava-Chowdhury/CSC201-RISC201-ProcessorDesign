@@ -303,11 +303,11 @@ ALUResult computeLogical(Opcode op, int32_t a, int32_t b)
         }
       
         case Opcode::NOT: {
-            // NOT is SINGLE_ARG (skips sourceRegister1 per isa.h), so the real input is 'b'
+            // NOT is SINGLE_ARG, reads sourceRegister1, so the real input is 'a'
             int32_t out = 0;
             for (int i = 0; i < 32; i++) {
-                int bitB = (b >> i) & 1;
-                int bitResult = bitB ^ 1;       // inverter: flips the bit (1->0, 0->1)
+                int bitA = (a >> i) & 1;
+                int bitResult = bitA ^ 1;        // inverter: flips the bit (1->0, 0->1)
                 out |= (bitResult << i);
             }
             result.value = out;
@@ -315,12 +315,12 @@ ALUResult computeLogical(Opcode op, int32_t a, int32_t b)
         }
       
         case Opcode::MOV: {
-            // MOV is SINGLE_ARG (skips sourceRegister1 per isa.h), so the real input is 'b'
+            // MOV is SINGLE_ARG, reads sourceRegister1, so the real input is 'a'
             // Pure pass-through (MUX select), rebuilt bit-by-bit for consistency
             int32_t out = 0;
             for (int i = 0; i < 32; i++) {
-                int bitB = (b >> i) & 1;
-                out |= (bitB << i);
+                int bitA = (a >> i) & 1;
+                out |= (bitA << i);
             }
             result.value = out;
             break;
