@@ -3,60 +3,34 @@
 #include "isa.h"
 #include <stdexcept>
 
-namespace
-{
-    bool isLabelLine(const std::vector<std::string>& tokens)
-    {
-        return tokens.size() == 1 && tokens[0].back() == ':';
-    }
+using namespace risc201;
 
-    std::string stripColon(const std::string& labelToken)
-    {
-        return labelToken.substr(0, labelToken.size() - 1);
-    }
-}
-
-SymbolTableResult buildSymbolTable(const std::vector<std::string>& lines)
+std::map<std::string, uint32_t> buildSymbolTable(const std::vector<std::string>& rawLines)
 {
-    SymbolTableResult result;
+    std::map<std::string, uint32_t> symbols;
     uint32_t currentAddress = 0;
 
-    for (size_t lineNumber = 0; lineNumber < lines.size(); lineNumber++)
-    {
-        std::vector<std::string> tokens;
-        try
-        {
-            tokens = tokenizeLine(lines[lineNumber]);
-        }
-        catch (const std::invalid_argument& e)
-        {
-            result.errors.push_back(
-                "line " + std::to_string(lineNumber + 1) + ": " + e.what());
-            currentAddress += risc201::BYTES_PER_WORD;
+    for (const std::string& line : rawLines) {
+        std::vector<std::string> tokens = tokenizeLine(line);
+
+        if (tokens.empty()) {
             continue;
         }
 
-        if (tokens.empty())
-        {
-            continue;
-        }
+        bool isLabelLine = (tokens.size() == 1 && tokens[0].back() == ':');
 
-        if (isLabelLine(tokens))
-        {
-            std::string labelName = stripColon(tokens[0]);
-            if (result.symbols.count(labelName))
-            {
-                result.errors.push_back(
-                    "line " + std::to_string(lineNumber + 1) +
-                    ": duplicate label '" + labelName + "'");
-                continue;
+        if (isLabelLine) {
+            std::string labelName = tokens[0].substr(0, tokens[0].size() - 1);
+
+            if (symbols.count(labelName)) {
+                throw std::invalid_argument("duplicate label: " + labelName);
             }
-            result.symbols[labelName] = currentAddress;
-            continue;
-        }
 
-        currentAddress += risc201::BYTES_PER_WORD;
+            symbols[labelName] = currentAddress;
+        } else {
+            currentAddress += BYTES_PER_WORD;
+        }
     }
 
-    return result;
+    return symbols;
 }

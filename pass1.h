@@ -1,13 +1,7 @@
 #pragma once
-#include <cstdint>
-#include <map>
 #include <string>
 #include <vector>
+#include <map>
+#include <cstdint>
 
-struct SymbolTableResult
-{
-    std::map<std::string, uint32_t> symbols;
-    std::vector<std::string> errors;
-};
-
-SymbolTableResult buildSymbolTable(const std::vector<std::string>& lines);
+std::map<std::string, uint32_t> buildSymbolTable(const std::vector<std::string>& rawLines);
