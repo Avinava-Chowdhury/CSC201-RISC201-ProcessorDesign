@@ -278,39 +278,72 @@ ALUResult computeLogical(Opcode op, int32_t a, int32_t b)
     result.flags.overflow = false;   // Not used in logic ops
     switch (op) 
     {
-        case Opcode::AND:
-            // TODO (Khushi): Implement bitwise AND.
+        case Opcode::AND: {
+            int32_t out = 0;
+            for (int i = 0; i < 32; i++) {
+                int bitA = (a >> i) & 1;        // extract bit i of a
+                int bitB = (b >> i) & 1;        // extract bit i of b
+                int bitResult = bitA & bitB;    // AND gate for this bit position
+                out |= (bitResult << i);        // place result bit back
+            }
+            result.value = out;
             break;
+        }
       
-        case Opcode::OR:
-            // TODO (Khushi): Implement bitwise OR.
+        case Opcode::OR: {
+            int32_t out = 0;
+            for (int i = 0; i < 32; i++) {
+                int bitA = (a >> i) & 1;
+                int bitB = (b >> i) & 1;
+                int bitResult = bitA | bitB;    // OR gate for this bit position
+                out |= (bitResult << i);
+            }
+            result.value = out;
             break;
+        }
       
-        case Opcode::NOT:
-            // TODO (Khushi): Implement bitwise NOT on operand 'a'.
+        case Opcode::NOT: {
+            // NOT is SINGLE_ARG, reads sourceRegister1, so the real input is 'a'
+            int32_t out = 0;
+            for (int i = 0; i < 32; i++) {
+                int bitA = (a >> i) & 1;
+                int bitResult = bitA ^ 1;        // inverter: flips the bit (1->0, 0->1)
+                out |= (bitResult << i);
+            }
+            result.value = out;
             break;
+        }
       
-        case Opcode::MOV:
-            // TODO (Khushi): Implement MOV (usually result.value = b or a, depending on setup).
+        case Opcode::MOV: {
+            // MOV is SINGLE_ARG, reads sourceRegister1, so the real input is 'a'
+            // Pure pass-through (MUX select), rebuilt bit-by-bit for consistency
+            int32_t out = 0;
+            for (int i = 0; i < 32; i++) {
+                int bitA = (a >> i) & 1;
+                out |= (bitA << i);
+            }
+            result.value = out;
             break;
+        }
       
-        case Opcode::CMP:
-            // TODO (Khushi): CMP does not output a number to a register, 
-            // but you should subtract 'b' from 'a' just to check if the result is zero.
-            // (Note: The actual GT and E flags are handled in isa.h, so just handle 'zero' here).
+        case Opcode::CMP: {
+            // COMPARE_ONLY: reuses subtractor logic (a - b), only the zero flag matters here.
+            // Real E/GT flags are handled separately by evaluateComparison() in isa.h.
+            int64_t wide = (int64_t)a - (int64_t)b;
+            result.value = (int32_t)wide;
             break;
+        }
       
         default:
             break;
     }
 
-    // TODO (Khushi): Set result.flags.zero = true if result.value is exactly 0.
+    result.flags.zero = (result.value == 0);
     return result;
 }
 
 
 // SAANVI ji: Shift Operations
-
 ALUResult computeShift(Opcode op, int32_t a, int32_t b) 
 {
     ALUResult result;
@@ -319,27 +352,54 @@ ALUResult computeShift(Opcode op, int32_t a, int32_t b)
     result.flags.carry = false;      // Not needed for simple shifts
     result.flags.overflow = false;   // Not needed for shifts
 
+    uint32_t ua = (uint32_t)a;
+    uint32_t amount = (uint32_t)b & 31;   // only 0-31 makes sense for a 32-bit shift
+
     switch (op) 
     {
-        case Opcode::LSL:
-            // TODO (Saanvi): Implement Logical Shift Left using <<
+        case Opcode::LSL: {
+            uint32_t out = 0;
+            for (int i = 0; i < 32; i++) {
+                int destPos = i + amount;           // bit i is moving to destPos
+                if (destPos < 32) {
+                    int bit = (ua >> i) & 1;        // read bit i of a
+                    out |= ((uint32_t)bit << destPos); // drop it into its new home
+                }
+            }
+            result.value = (int32_t)out;
             break;
-      
-        case Opcode::LSR:
-            // TODO (Saanvi): Implement Logical Shift Right.
-            // Hint: cast 'a' to an unsigned integer (uint32_t) before shifting (>>) 
-            // so it doesn't drag the sign bit with it.
+        }
+
+        case Opcode::LSR: {
+            uint32_t out = 0;
+            for (int i = 0; i < 32; i++) {
+                int srcPos = i + amount;            // bit that needs to land at position i
+                if (srcPos < 32) {
+                    int bit = (ua >> srcPos) & 1;
+                    out |= ((uint32_t)bit << i);
+                }
+                // if srcPos >= 32, there's nothing there -> stays 0 automatically
+            }
+            result.value = (int32_t)out;
             break;
-      
-        case Opcode::ASR:
-            // TODO (Saanvi): Implement Arithmetic Shift Right.
-            // Hint: a standard shift (>>) on a signed int32_t in C++ automatically preserves the sign.
+        }
+
+        case Opcode::ASR: {
+            uint32_t out = 0;
+            int signBit = (ua >> 31) & 1;           // the bit we must "clone" into empty top spots
+            for (int i = 0; i < 32; i++) {
+                int srcPos = i + amount;
+                int bit = (srcPos < 32) ? (int)((ua >> srcPos) & 1) : signBit;
+                out |= ((uint32_t)bit << i);
+            }
+            result.value = (int32_t)out;
             break;
-      
+        }
+
         default:
             break;
     }
 
-    // TODO (Saanvi): Set result.flags.zero = true if result.value is exactly 0.
+    result.flags.zero = (result.value == 0);
     return result;
 }
