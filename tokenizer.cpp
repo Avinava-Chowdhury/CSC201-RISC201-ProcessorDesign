@@ -38,7 +38,10 @@ std::vector<std::string> tokenizeLine(const std::string& line)
     if (!details) {
         throw std::invalid_argument("unknown instruction: " + tokens[0]);
     }
-
+   if (details->assemblyFormat == AssemblySyntax::JUMP_TO_LABEL ||
+        details->assemblyFormat == AssemblySyntax::NO_ARGS) {
+        return tokens;
+    }
     // check every other token that looks like a register actually is one
     for (size_t i = 1; i < tokens.size(); i++) {
         bool looksLikeNumber = isdigit((unsigned char)tokens[i][0]) || tokens[i][0] == '-';
