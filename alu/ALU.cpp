@@ -31,12 +31,15 @@ ALUResult execute(Opcode op, int32_t operand1, int32_t operand2)
         case Opcode::MOV:
         case Opcode::CMP:
             return computeLogical(op, operand1, operand2);
-
+      
         // Saanvi's operations
         case Opcode::LSL:
         case Opcode::LSR:
         case Opcode::ASR:
+        case Opcode::ROL:
+        case Opcode::ROR:
             return computeShift(op, operand1, operand2);
+       
 
         // Iss part ko mein (Avinava) baadme dekh lunga, kisiko kuch karne ki zarurat nahi hai.
         // Non-ALU instructions (Loads, Stores, Branches)
@@ -342,7 +345,6 @@ ALUResult computeLogical(Opcode op, int32_t a, int32_t b)
     return result;
 }
 
-
 // SAANVI ji: Shift Operations
 ALUResult computeShift(Opcode op, int32_t a, int32_t b) 
 {
@@ -360,10 +362,10 @@ ALUResult computeShift(Opcode op, int32_t a, int32_t b)
         case Opcode::LSL: {
             uint32_t out = 0;
             for (int i = 0; i < 32; i++) {
-                int destPos = i + amount;           // bit i is moving to destPos
+                int destPos = i + amount;
                 if (destPos < 32) {
-                    int bit = (ua >> i) & 1;        // read bit i of a
-                    out |= ((uint32_t)bit << destPos); // drop it into its new home
+                    int bit = (ua >> i) & 1;
+                    out |= ((uint32_t)bit << destPos);
                 }
             }
             result.value = (int32_t)out;
@@ -373,12 +375,11 @@ ALUResult computeShift(Opcode op, int32_t a, int32_t b)
         case Opcode::LSR: {
             uint32_t out = 0;
             for (int i = 0; i < 32; i++) {
-                int srcPos = i + amount;            // bit that needs to land at position i
+                int srcPos = i + amount;
                 if (srcPos < 32) {
                     int bit = (ua >> srcPos) & 1;
                     out |= ((uint32_t)bit << i);
                 }
-                // if srcPos >= 32, there's nothing there -> stays 0 automatically
             }
             result.value = (int32_t)out;
             break;
@@ -386,10 +387,34 @@ ALUResult computeShift(Opcode op, int32_t a, int32_t b)
 
         case Opcode::ASR: {
             uint32_t out = 0;
-            int signBit = (ua >> 31) & 1;           // the bit we must "clone" into empty top spots
+            int signBit = (ua >> 31) & 1;
             for (int i = 0; i < 32; i++) {
                 int srcPos = i + amount;
                 int bit = (srcPos < 32) ? (int)((ua >> srcPos) & 1) : signBit;
+                out |= ((uint32_t)bit << i);
+            }
+            result.value = (int32_t)out;
+            break;
+        }
+
+        case Opcode::ROL: {
+            uint32_t out = 0;
+            for (int i = 0; i < 32; i++) {
+                int destPos = i + amount;
+                if (destPos >= 32) destPos -= 32;   // wrap around
+                int bit = (ua >> i) & 1;
+                out |= ((uint32_t)bit << destPos);
+            }
+            result.value = (int32_t)out;
+            break;
+        }
+
+        case Opcode::ROR: {
+            uint32_t out = 0;
+            for (int i = 0; i < 32; i++) {
+                int srcPos = i + amount;
+                if (srcPos >= 32) srcPos -= 32;     // wrap around
+                int bit = (ua >> srcPos) & 1;
                 out |= ((uint32_t)bit << i);
             }
             result.value = (int32_t)out;
@@ -403,3 +428,4 @@ ALUResult computeShift(Opcode op, int32_t a, int32_t b)
     result.flags.zero = (result.value == 0);
     return result;
 }
+
