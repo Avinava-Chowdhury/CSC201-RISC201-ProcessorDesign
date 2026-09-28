@@ -139,6 +139,9 @@ namespace
         { "abs",  OperationCode::ABS,  InstructionLayout::OPERATE, AssemblySyntax::SINGLE_ARG,     false },
         { "min",  OperationCode::MIN,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
         { "max",  OperationCode::MAX,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
+        { "rol",  OperationCode::ROL,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
+        { "ror",  OperationCode::ROR,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
+    };
     };
 }  // namespace
 
