@@ -142,7 +142,7 @@ namespace
         { "rol",  OperationCode::ROL,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
         { "ror",  OperationCode::ROR,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
     };
-    };
+    
 }  // namespace
 
 const OperationDetails* findByAssemblyText(const std::string& nameInAssembly)
