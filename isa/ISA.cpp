@@ -32,11 +32,17 @@
 // Bits [26:0]  : Branch Jump Distance (27 bits) - This is a large, sign-extended number representing how many steps forward or backward the program should jump.
 #include "isa.h"
 
-#include 
-#include 
+#include <cctype>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <string>
 
-using namespace std;
-using namespace risc201;
+// Everything below is defined INSIDE namespace risc201 so that these are
+// definitions of the functions declared in isa.h (and not brand-new
+// overloads at global scope, which is what caused the "ambiguous call" errors).
+namespace risc201
+{
 
 // ---------------------------------------------------------------------
 // Register naming
@@ -44,11 +50,11 @@ using namespace risc201;
 
 namespace
 {
-    constexpr std::array kRegisterNames = {
+    constexpr const char* kRegisterNames[TOTAL_REGISTERS] = {
         "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7",
         "r8", "r9", "r10", "r11", "r12", "r13", "sp", "ra"
     };
-} 
+}
 
 const char* getRegisterName(uint8_t registerIndex)
 {
@@ -70,7 +76,7 @@ int parseRegisterName(const std::string& regName)
         return RETURN_ADDRESS_REG_INDEX;
     }
 
-    // Expect the form "r" where N is 0..TOTAL_REGISTERS-1.
+    // Expect the form "rN" where N is 0..TOTAL_REGISTERS-1.
     if (regName.size() < 2 || (regName[0] != 'r' && regName[0] != 'R'))
     {
         return -1;
@@ -78,10 +84,17 @@ int parseRegisterName(const std::string& regName)
 
     for (size_t i = 1; i < regName.size(); ++i)
     {
-        if (!std::isdigit(static_cast(regName[i])))
+        if (!std::isdigit(static_cast<unsigned char>(regName[i])))
         {
             return -1;
         }
+    }
+
+    // Guard against absurdly long digit strings (e.g. "r99999999999")
+    // which would make std::stoi throw std::out_of_range.
+    if (regName.size() > 3)
+    {
+        return -1;
     }
 
     int index = std::stoi(regName.substr(1));
@@ -98,7 +111,9 @@ int parseRegisterName(const std::string& regName)
 
 namespace
 {
-    constexpr std::array kOperationTable = { {
+    // A plain array (instead of std::array) so the compiler works out the
+    // element count itself -- adding an instruction never needs a size edit.
+    constexpr OperationDetails kOperationTable[] = {
         { "add",  OperationCode::ADD,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
         { "sub",  OperationCode::SUB,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
         { "mul",  OperationCode::MUL,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
@@ -124,7 +139,7 @@ namespace
         { "abs",  OperationCode::ABS,  InstructionLayout::OPERATE, AssemblySyntax::SINGLE_ARG,     false },
         { "min",  OperationCode::MIN,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
         { "max",  OperationCode::MAX,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
-    } };
+    };
 }  // namespace
 
 const OperationDetails* findByAssemblyText(const std::string& nameInAssembly)
@@ -143,7 +158,7 @@ const OperationDetails* findByOpcodeId(uint8_t numericOpcodeId)
 {
     for (const auto& entry : kOperationTable)
     {
-        if (static_cast(entry.opCodeId) == numericOpcodeId)
+        if (static_cast<uint8_t>(entry.opCodeId) == numericOpcodeId)
         {
             return &entry;
         }
@@ -153,7 +168,7 @@ const OperationDetails* findByOpcodeId(uint8_t numericOpcodeId)
 
 const OperationDetails* findByOpcodeId(OperationCode opCodeId)
 {
-    return findByOpcodeId(static_cast(opCodeId));
+    return findByOpcodeId(static_cast<uint8_t>(opCodeId));
 }
 
 // ---------------------------------------------------------------------
@@ -166,16 +181,16 @@ int32_t expandConstant(uint16_t rawValue, ImmediateModifier modifier)
     {
     case ImmediateModifier::SIGNED:
         // Sign-extend the 16-bit raw value into a full 32-bit signed value.
-        return extendSignBit(static_cast(rawValue), CONSTANT_VALUE_BIT_COUNT);
+        return extendSignBit(static_cast<uint32_t>(rawValue), CONSTANT_VALUE_BIT_COUNT);
 
     case ImmediateModifier::UNSIGNED:
         // Zero-extend: the bits are already the correct positive magnitude.
-        return static_cast(static_cast(rawValue));
+        return static_cast<int32_t>(static_cast<uint32_t>(rawValue));
 
     case ImmediateModifier::UPPER:
         // Shift the 16 bits into the top half of the word (used to build
         // 32-bit constants together with a lower/OR instruction).
-        return static_cast(static_cast(rawValue) << 16);
+        return static_cast<int32_t>(static_cast<uint32_t>(rawValue) << 16);
     }
     return 0;
 }
@@ -211,38 +226,38 @@ namespace
 uint32_t convertToBinary(const DecodedInstruction& instructionStruct)
 {
     const OperationDetails* details = findByOpcodeId(instructionStruct.operation);
-    uint32_t word = (static_cast(instructionStruct.operation) & OPCODE_MASK) << OPCODE_SHIFT;
+    uint32_t word = (static_cast<uint32_t>(instructionStruct.operation) & OPCODE_MASK) << OPCODE_SHIFT;
 
     const bool isBranch = details != nullptr && details->layoutFormat == InstructionLayout::BRANCH;
 
     if (isBranch)
     {
-        uint32_t offsetBits = static_cast(instructionStruct.branchJumpDistance) & BRANCH_OFFSET_MASK;
+        uint32_t offsetBits = static_cast<uint32_t>(instructionStruct.branchJumpDistance) & BRANCH_OFFSET_MASK;
         word |= offsetBits;
         return word;
     }
 
     // OPERATE layout.
-    word |= (static_cast(instructionStruct.destinationRegister) & REGISTER_MASK) << DEST_REG_SHIFT;
-    word |= (static_cast(instructionStruct.sourceRegister1) & REGISTER_MASK) << SRC1_REG_SHIFT;
+    word |= (static_cast<uint32_t>(instructionStruct.destinationRegister) & REGISTER_MASK) << DEST_REG_SHIFT;
+    word |= (static_cast<uint32_t>(instructionStruct.sourceRegister1) & REGISTER_MASK) << SRC1_REG_SHIFT;
 
     if (instructionStruct.usesConstantNumber)
     {
         word |= (1u << IMMEDIATE_FLAG_SHIFT);
-        word |= (static_cast(instructionStruct.constantModifier) & MODIFIER_MASK) << MODIFIER_SHIFT;
-        word |= (static_cast(instructionStruct.rawConstantValue) & CONSTANT_MASK);
+        word |= (static_cast<uint32_t>(instructionStruct.constantModifier) & MODIFIER_MASK) << MODIFIER_SHIFT;
+        word |= (static_cast<uint32_t>(instructionStruct.rawConstantValue) & CONSTANT_MASK);
     }
     else
     {
-        word |= (static_cast(instructionStruct.sourceRegister2) & REGISTER_MASK) << SRC2_REG_SHIFT;
+        word |= (static_cast<uint32_t>(instructionStruct.sourceRegister2) & REGISTER_MASK) << SRC2_REG_SHIFT;
     }
 
     return word;
 }
 
-std::optional convertFromBinary(uint32_t rawBinaryWord)
+std::optional<DecodedInstruction> convertFromBinary(uint32_t rawBinaryWord)
 {
-    const uint8_t opcodeId = static_cast((rawBinaryWord >> OPCODE_SHIFT) & OPCODE_MASK);
+    const uint8_t opcodeId = static_cast<uint8_t>((rawBinaryWord >> OPCODE_SHIFT) & OPCODE_MASK);
     const OperationDetails* details = findByOpcodeId(opcodeId);
     if (details == nullptr)
     {
@@ -259,19 +274,19 @@ std::optional convertFromBinary(uint32_t rawBinaryWord)
     }
 
     // OPERATE layout.
-    instruction.destinationRegister = static_cast((rawBinaryWord >> DEST_REG_SHIFT) & REGISTER_MASK);
-    instruction.sourceRegister1 = static_cast((rawBinaryWord >> SRC1_REG_SHIFT) & REGISTER_MASK);
+    instruction.destinationRegister = static_cast<uint8_t>((rawBinaryWord >> DEST_REG_SHIFT) & REGISTER_MASK);
+    instruction.sourceRegister1 = static_cast<uint8_t>((rawBinaryWord >> SRC1_REG_SHIFT) & REGISTER_MASK);
     instruction.usesConstantNumber = ((rawBinaryWord >> IMMEDIATE_FLAG_SHIFT) & 0x1u) != 0;
 
     if (instruction.usesConstantNumber)
     {
         const uint32_t modifierBits = (rawBinaryWord >> MODIFIER_SHIFT) & MODIFIER_MASK;
-        instruction.constantModifier = static_cast(modifierBits);
-        instruction.rawConstantValue = static_cast(rawBinaryWord & CONSTANT_MASK);
+        instruction.constantModifier = static_cast<ImmediateModifier>(modifierBits);
+        instruction.rawConstantValue = static_cast<uint16_t>(rawBinaryWord & CONSTANT_MASK);
     }
     else
     {
-        instruction.sourceRegister2 = static_cast((rawBinaryWord >> SRC2_REG_SHIFT) & REGISTER_MASK);
+        instruction.sourceRegister2 = static_cast<uint8_t>((rawBinaryWord >> SRC2_REG_SHIFT) & REGISTER_MASK);
     }
 
     return instruction;
@@ -366,3 +381,5 @@ bool readsSecondSourceRegister(const DecodedInstruction& instruction)
         return false;  // SINGLE_ARG, LOAD_MEMORY, STORE_MEMORY, NO_ARGS, JUMP_TO_LABEL don't use sourceRegister2
     }
 }
+
+}  // namespace risc201
