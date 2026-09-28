@@ -46,7 +46,7 @@ enum class OperationCode : uint8_t
         NEG = 21, ABS = 22, MIN = 23, MAX = 24,
     ROL = 25, ROR = 26
 };
-};
+
 
 // Instruction Layouts
 // Think of the 32-bit instruction as a train with specific cargo cars. 
