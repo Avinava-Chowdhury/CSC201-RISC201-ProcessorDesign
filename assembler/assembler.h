@@ -1,5 +1,4 @@
 #ifndef ASSEMBLER_H
-#ifndef ASSEMBLER_H
 #define ASSEMBLER_H
 
 #include <string>
@@ -11,13 +10,13 @@ class Assembler {
 public:
     Assembler() = default;
 
-    // 1. Reads the .s assembly file line by line into memory
+    // Read the .s assembly file line by line
     bool loadSourceFile(const std::string& path);
 
-    // 2. Runs Pass 1 (Symbol Table) and Pass 2 (Encoding)
+    // Run macro expansion, Pass 1, and Pass 2
     bool assemble();
 
-    // 3. Writes the output to disk as raw binary or hex text
+    // Write machine code as binary or hexadecimal text
     bool writeOutput(const std::string& outPath, bool asHex = false);
 
 private:
