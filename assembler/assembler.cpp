@@ -7,61 +7,120 @@
 #include <fstream>
 #include <iostream>
 #include <iomanip>
+#include <exception>
 
 using namespace std;
 using namespace risc201;
 
-bool Assembler::loadSourceFile(const string& path) {
+bool Assembler::loadSourceFile(const string& path)
+{
     ifstream file(path);
+
     if (!file.is_open()) {
         cerr << "Error: Could not open source file: " << path << "\n";
         return false;
     }
 
     rawLines.clear();
+
     string line;
     while (getline(file, line)) {
         rawLines.push_back(line);
     }
 
     file.close();
+
     return true;
 }
 
-bool Assembler::assemble() {
+bool Assembler::assemble()
+{
     if (rawLines.empty()) {
         cerr << "Error: No source code loaded.\n";
         return false;
     }
 
     try {
-        // Step 1: Expand macros (e.g. PUSH / POP into real instruction strings)
+        // ---------------------------------------------------------
+        // Step 1: Expand macros
+        //
+        // Example:
+        //     push r1
+        //
+        // becomes:
+        //     sub sp, sp, 4
+        //     st r1, 0[sp]
+        //
+        // This happens before Pass 1 because macros can become
+        // multiple instructions and therefore affect addresses.
+        // ---------------------------------------------------------
         vector<string> expandedLines = expandMacroLines(rawLines);
 
-        // Step 2: Pass 1 - Build Symbol Table (Label -> Address mapping)
+        // ---------------------------------------------------------
+        // Step 2: Pass 1
+        //
+        // Build the symbol table:
+        //
+        //     label -> address
+        //
+        // Example:
+        //     loop:       -> 0x0000
+        // ---------------------------------------------------------
         symbolTable = buildSymbolTable(expandedLines);
 
-        // Step 3: Pass 2 - Tokenize lines and encode to machine code
+        // ---------------------------------------------------------
+        // Step 3: Pass 2
+        //
+        // Tokenize each line, build its decoded instruction,
+        // encode it into a 32-bit machine word, and store it.
+        // ---------------------------------------------------------
         machineCode.clear();
+
         uint32_t addr = 0;
 
         for (const auto& line : expandedLines) {
+
+            // Convert assembly text into tokens.
             auto tokens = tokenizeLine(line);
-            if (tokens.empty()) continue;
 
-            // Skip label-only definitions (e.g. "loop_start:")
-            bool isLabel = tokens.size() == 1 && tokens[0].back() == ':';
-            if (isLabel) continue;
+            // Blank/comment-only line.
+            if (tokens.empty()) {
+                continue;
+            }
 
-            // Build instruction and convert to binary word
-            auto instr = buildInstruction(tokens, addr, symbolTable);
+            // Labels do not produce machine instructions.
+            // Example:
+            //     loop:
+            //
+            // The label was already handled by Pass 1.
+            bool isLabel =
+                tokens.size() == 1 &&
+                !tokens[0].empty() &&
+                tokens[0].back() == ':';
+
+            if (isLabel) {
+                continue;
+            }
+
+            // Convert tokens into a decoded instruction.
+            auto instr = buildInstruction(
+                tokens,
+                addr,
+                symbolTable
+            );
+
+            // Convert the decoded instruction into
+            // the final 32-bit machine word.
             uint32_t word = encode(instr);
 
             machineCode.push_back(word);
+
+            // Every instruction is 4 bytes.
             addr += BYTES_PER_WORD;
         }
 
     } catch (const exception& e) {
+
         cerr << "Assembly Error: " << e.what() << "\n";
         return false;
     }
@@ -69,27 +128,59 @@ bool Assembler::assemble() {
     return true;
 }
 
-bool Assembler::writeOutput(const string& outPath, bool asHex) {
+bool Assembler::writeOutput(const string& outPath, bool asHex)
+{
     if (machineCode.empty()) {
         cerr << "Error: No machine code to write.\n";
         return false;
     }
 
+    // ---------------------------------------------------------
+    // Hexadecimal text output
+    // ---------------------------------------------------------
     if (asHex) {
+
         ofstream outFile(outPath);
-        if (!outFile.is_open()) return false;
+
+        if (!outFile.is_open()) {
+            cerr << "Error: Could not open output file: "
+                 << outPath << "\n";
+            return false;
+        }
 
         for (uint32_t word : machineCode) {
-            outFile << "0x" << hex << setw(8) << setfill('0') << word << "\n";
+            outFile
+                << "0x"
+                << hex
+                << setw(8)
+                << setfill('0')
+                << word
+                << "\n";
         }
+
         outFile.close();
-    } else {
+    }
+
+    // ---------------------------------------------------------
+    // Raw binary output
+    // ---------------------------------------------------------
+    else {
+
         ofstream outFile(outPath, ios::binary);
-        if (!outFile.is_open()) return false;
+
+        if (!outFile.is_open()) {
+            cerr << "Error: Could not open output file: "
+                 << outPath << "\n";
+            return false;
+        }
 
         for (uint32_t word : machineCode) {
-            outFile.write(reinterpret_cast<const char*>(&word), sizeof(word));
+            outFile.write(
+                reinterpret_cast<const char*>(&word),
+                sizeof(word)
+            );
         }
+
         outFile.close();
     }
 
