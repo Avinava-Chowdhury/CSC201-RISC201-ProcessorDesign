@@ -25,18 +25,25 @@ risc201::DecodedInstruction buildInstruction(
 // Packs a DecodedInstruction into the final 32-bit machine word.
 uint32_t encode(const risc201::DecodedInstruction& instr);
 
-// Expands PUSH / POP into real instructions, working on RAW TEXT LINES.
-// This must run BEFORE tokenizeLine() and buildSymbolTable(), because the
-// tokenizer rejects "push"/"pop" as unknown instructions, and because label
-// addresses have to account for each macro becoming two instructions.
+// Expands the macros PUSH / POP / LI into real instructions, working on RAW
+// TEXT LINES. This must run BEFORE tokenizeLine() and buildSymbolTable(),
+// because the tokenizer rejects macro names as unknown instructions, and
+// because label addresses have to account for macros becoming several
+// instructions.
 //     push r1  ->  sub sp, sp, 4
 //                  st  r1, 0[sp]
 //     pop  r1  ->  ld  r1, 0[sp]
 //                  add sp, sp, 4
+//     li r1, N ->  loads any 32-bit constant N (decimal or 0x hex) into r1:
+//                    mov r1, N                 if N fits a signed 16-bit value
+//                    mov r1, 0xNNNNu           if N is 0x8000..0xFFFF
+//                    mov r1, 0xHHHHh           if the low 16 bits of N are zero
+//                    mov r1, 0xHHHHh           otherwise (2 instructions:
+//                    or  r1, r1, 0xLLLLu        upper half, then OR in lower half)
 std::vector<std::string> expandMacroLines(const std::vector<std::string>& rawLines);
 
-// Same expansion, but working on already-tokenized lines. Only usable if the
-// tokens were produced without the tokenizer's mnemonic check rejecting
-// push/pop first.
+// Same expansion (it shares the same code), but on already-tokenized lines.
+// Only usable if the tokens were produced without the tokenizer's mnemonic
+// check rejecting the macro names first.
 std::vector<std::vector<std::string>> expandMacros(
     const std::vector<std::vector<std::string>>& tokenLines);
