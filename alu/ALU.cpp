@@ -6,13 +6,13 @@
 using namespace std;
 using namespace risc201;
 
-// Yaha kuch nahi karna hai, code likhne ki jagah niche hai.
+
 
 ALUResult execute(Opcode op, int32_t operand1, int32_t operand2) 
 {
    switch (op) 
    {
-        // Seema's operations
+        
         case Opcode::ADD:
         case Opcode::SUB:
         case Opcode::MUL:
@@ -24,7 +24,7 @@ ALUResult execute(Opcode op, int32_t operand1, int32_t operand2)
         case Opcode::MAX:
             return computeArithmetic(op, operand1, operand2);
 
-        // Khushi's operations
+        
         case Opcode::AND:
         case Opcode::OR:
         case Opcode::NOT:
@@ -32,7 +32,7 @@ ALUResult execute(Opcode op, int32_t operand1, int32_t operand2)
         case Opcode::CMP:
             return computeLogical(op, operand1, operand2);
       
-        // Saanvi's operations
+        
         case Opcode::LSL:
         case Opcode::LSR:
         case Opcode::ASR:
@@ -66,7 +66,7 @@ ALUResult execute(Opcode op, int32_t operand1, int32_t operand2)
 }
 
 
-// Seema Ji, Jo jo arithmetic.cpp me kar rakha hai, yaha kar dena, aur us file ko delete kar dena
+
 
 struct AdderOutput {
     uint32_t sum;
@@ -270,7 +270,7 @@ ALUResult computeArithmetic(Opcode op, int32_t a, int32_t b) {
     result.flags.zero = (result.value == 0);
     return result;
 }
-// KHUSHI Ji: Logical Operations
+// Logical Operations
 
 ALUResult computeLogical(Opcode op, int32_t a, int32_t b) 
 {
