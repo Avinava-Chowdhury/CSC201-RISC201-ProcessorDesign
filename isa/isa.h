@@ -47,7 +47,7 @@ enum class OperationCode : uint8_t
     ROL = 25, ROR = 26
 };
 
-
+using Opcode = OperationCode;
 // Instruction Layouts
 // Think of the 32-bit instruction as a train with specific cargo cars. 
 // There are only two ways to arrange the cars:

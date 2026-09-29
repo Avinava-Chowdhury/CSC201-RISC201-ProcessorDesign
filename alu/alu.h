@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-#include "isa.h"
+#include "../isa/isa.h"
 using Opcode = risc201::OperationCode;
 using namespace std;
 using namespace risc201;
