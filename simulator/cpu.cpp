@@ -240,3 +240,71 @@ void CPU::do_EX() {
     // Forward the control word so MEM_WB knows whether to write to RAM or registers
     ex_memwb.ctrl = id_ex.ctrl;
 }
+
+// STAGE 4 & 5: MEMORY ACCESS & WRITEBACK (MEM_WB)
+void CPU::do_MEM_WB() {
+    if (!ex_memwb.active) {
+        return;
+    }
+
+    int32_t writebackValue = ex_memwb.alu_result;
+
+    // 1. Memory Read (LD)
+    if (ex_memwb.ctrl.memRead) {
+        uint32_t memAddr = static_cast<uint32_t>(ex_memwb.alu_result);
+        if (memAddr > 65532) {
+            throw SimException("Hardware Crash: Out-of-bounds memory access at " + std::to_string(memAddr));
+        }
+        if (memAddr % 4 != 0) {
+            throw SimException("Hardware Crash: Misaligned memory access at " + std::to_string(memAddr));
+        }
+
+        uint32_t loaded = 0;
+        loaded |= dataMem[memAddr];
+        loaded |= (dataMem[memAddr + 1] << 8);
+        loaded |= (dataMem[memAddr + 2] << 16);
+        loaded |= (dataMem[memAddr + 3] << 24);
+        writebackValue = static_cast<int32_t>(loaded);
+    }
+
+    // 2. Memory Write (ST)
+    if (ex_memwb.ctrl.memWrite) {
+        uint32_t memAddr = static_cast<uint32_t>(ex_memwb.alu_result);
+        if (memAddr > 65532) {
+            throw SimException("Hardware Crash: Out-of-bounds memory access at " + std::to_string(memAddr));
+        }
+        if (memAddr % 4 != 0) {
+            throw SimException("Hardware Crash: Misaligned memory access at " + std::to_string(memAddr));
+        }
+
+        uint32_t dataToStore = static_cast<uint32_t>(ex_memwb.store_data);
+        dataMem[memAddr]     = dataToStore & 0xFF;
+        dataMem[memAddr + 1] = (dataToStore >> 8) & 0xFF;
+        dataMem[memAddr + 2] = (dataToStore >> 16) & 0xFF;
+        dataMem[memAddr + 3] = (dataToStore >> 24) & 0xFF;
+    }
+
+    // 3. Register Writeback
+    if (ex_memwb.ctrl.regWrite) {
+        reg[ex_memwb.dest_reg] = writebackValue;
+    }
+
+    // Stack pointer hardware boundary safeguard
+    uint32_t currentSP = reg[risc201::STACK_POINTER_REG_INDEX];
+    if (currentSP < risc201::STACK_LOWEST_LIMIT || currentSP > risc201::STACK_STARTING_ADDRESS) {
+        throw SimException("Hardware Crash: Stack pointer out of bounds (Value: " + std::to_string(currentSP) + ")");
+    }
+}
+
+// Clock Cycle Stepping in reverse 
+
+void CPU::tick() {
+    do_MEM_WB();
+    do_EX();
+    do_ID();
+    do_IF();
+}
+
+void CPU::stepInstruction() {
+    tick();
+}
