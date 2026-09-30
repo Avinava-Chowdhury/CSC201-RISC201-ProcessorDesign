@@ -3,55 +3,30 @@
 #include <climits>
 #include <stdexcept>
 
-using namespace std;
-using namespace risc201;
+namespace risc201 {
 
-
-
-ALUResult execute(Opcode op, int32_t operand1, int32_t operand2) 
-{
-   switch (op) 
-   {
-        
-        case Opcode::ADD:
-        case Opcode::SUB:
-        case Opcode::MUL:
-        case Opcode::DIV:
-        case Opcode::MOD:
-        case Opcode::NEG:
-        case Opcode::ABS:
-        case Opcode::MIN:
+// The Public Interface
+ALUResult ALU::execute(Opcode op, int32_t operand1, int32_t operand2) {
+    switch (op) {
+        // Arithmetic
+        case Opcode::ADD: case Opcode::SUB: case Opcode::MUL: case Opcode::DIV:
+        case Opcode::MOD: case Opcode::NEG: case Opcode::ABS: case Opcode::MIN:
         case Opcode::MAX:
             return computeArithmetic(op, operand1, operand2);
 
-        
-        case Opcode::AND:
-        case Opcode::OR:
-        case Opcode::XOR:
-        case Opcode::NOT:
-        case Opcode::MOV:
-        case Opcode::CMP:
+        // Logical
+        case Opcode::AND: case Opcode::OR:  case Opcode::XOR: case Opcode::NOT:
+        case Opcode::MOV: case Opcode::CMP:
             return computeLogical(op, operand1, operand2);
-      
         
-        case Opcode::LSL:
-        case Opcode::LSR:
-        case Opcode::ASR:
-        case Opcode::ROL:
+        // Shift
+        case Opcode::LSL: case Opcode::LSR: case Opcode::ASR: case Opcode::ROL:
         case Opcode::ROR:
             return computeShift(op, operand1, operand2);
        
-
-        // Iss part ko mein (Avinava) baadme dekh lunga, kisiko kuch karne ki zarurat nahi hai.
-        // Non-ALU instructions (Loads, Stores, Branches)
-        case Opcode::NOP:
-        case Opcode::LD:
-        case Opcode::ST:
-        case Opcode::BEQ:
-        case Opcode::BGT:
-        case Opcode::B:
-        case Opcode::CALL:
-        case Opcode::RET:
+        // Bypassed Operations (Loads, Stores, Branches)
+        case Opcode::NOP: case Opcode::LD:  case Opcode::ST:  case Opcode::BEQ:
+        case Opcode::BGT: case Opcode::B:   case Opcode::CALL: case Opcode::RET:
         {
             // These don't use the ALU for math in the same way. Return a safe empty object.
             ALUResult empty;
@@ -66,15 +41,10 @@ ALUResult execute(Opcode op, int32_t operand1, int32_t operand2)
     }
 }
 
-
-
-
-struct AdderOutput {
-    uint32_t sum;
-    bool carryOut;
-};
-
-AdderOutput carryLookaheadAdd(uint32_t a, uint32_t b, bool carryIn) {
+// -------------------------------------------------------------
+// Primitives
+// -------------------------------------------------------------
+ALU::AdderOutput ALU::carryLookaheadAdd(uint32_t a, uint32_t b, bool carryIn) {
     bool G[32], P[32];
     for (int i = 0; i < 32; i++) {
         bool ai = (a >> i) & 1;
@@ -115,12 +85,12 @@ AdderOutput carryLookaheadAdd(uint32_t a, uint32_t b, bool carryIn) {
     return out;
 }
 
-uint32_t negateCLA(uint32_t x) {
+uint32_t ALU::negateCLA(uint32_t x) {
     AdderOutput r = carryLookaheadAdd(~x, 0, true);
     return r.sum;
 }
 
-void restoringDivide(uint32_t dividend, uint32_t divisor, uint32_t& quotient, uint32_t& remainder) {
+void ALU::restoringDivide(uint32_t dividend, uint32_t divisor, uint32_t& quotient, uint32_t& remainder) {
     quotient = 0;
     remainder = 0;
     for (int i = 31; i >= 0; i--) {
@@ -135,7 +105,10 @@ void restoringDivide(uint32_t dividend, uint32_t divisor, uint32_t& quotient, ui
     }
 }
 
-ALUResult computeArithmetic(Opcode op, int32_t a, int32_t b) {
+// -------------------------------------------------------------
+// Group Dispatchers
+// -------------------------------------------------------------
+ALUResult ALU::computeArithmetic(Opcode op, int32_t a, int32_t b) {
     ALUResult result;
     result.value = 0;
     result.flags.zero = false;
@@ -271,17 +244,14 @@ ALUResult computeArithmetic(Opcode op, int32_t a, int32_t b) {
     result.flags.zero = (result.value == 0);
     return result;
 }
-// Logical Operations
 
-ALUResult computeLogical(Opcode op, int32_t a, int32_t b) 
-{
+ALUResult ALU::computeLogical(Opcode op, int32_t a, int32_t b) {
     ALUResult result;
     result.value = 0;
     result.flags.zero = false;
     result.flags.carry = false;      // Not used in logic ops
     result.flags.overflow = false;   // Not used in logic ops
-    switch (op) 
-    {
+    switch (op) {
         case Opcode::AND: {
             int32_t out = 0;
             for (int i = 0; i < 32; i++) {
@@ -358,9 +328,7 @@ ALUResult computeLogical(Opcode op, int32_t a, int32_t b)
     return result;
 }
 
-// SAANVI ji: Shift Operations
-ALUResult computeShift(Opcode op, int32_t a, int32_t b) 
-{
+ALUResult ALU::computeShift(Opcode op, int32_t a, int32_t b) {
     ALUResult result;
     result.value = 0;
     result.flags.zero = false;
@@ -370,8 +338,7 @@ ALUResult computeShift(Opcode op, int32_t a, int32_t b)
     uint32_t ua = (uint32_t)a;
     uint32_t amount = (uint32_t)b & 31;   // only 0-31 makes sense for a 32-bit shift
 
-    switch (op) 
-    {
+    switch (op) {
         case Opcode::LSL: {
             uint32_t out = 0;
             for (int i = 0; i < 32; i++) {
@@ -442,3 +409,4 @@ ALUResult computeShift(Opcode op, int32_t a, int32_t b)
     return result;
 }
 
+} // namespace risc201

@@ -1,25 +1,53 @@
 #pragma once
 #include <cstdint>
 #include "../isa/isa.h"
+
 using Opcode = risc201::OperationCode;
-using namespace std;
-using namespace risc201;
-class ALUFlag
+
+namespace risc201 
 {
-   public:
-       bool zero;      // true if the result is exactly 0
-       bool carry;     // true if ADD/SUB produced a carry/borrow out of bit 31
-       bool overflow;  // true if a *signed* ADD/SUB overflowed (result has the wrong sign)
+
+// 1. The Flags Struct
+class ALUFlag 
+{
+public:
+    bool zero;      
+    bool carry;     
+    bool overflow;  
 };
+
+// 2. The Result Struct
 class ALUResult 
 {
-   public:
-       int32_t  value;
-       ALUFlag flags;
+public:
+    int32_t  value;
+    ALUFlag flags;
 };
-//dispatcher function
-ALUResult execute(Opcode op, int32_t operand1, int32_t operand2);
-//Helper functions
-ALUResult computeArithmetic(Opcode op, int32_t a, int32_t b); // Seema Ji
-ALUResult computeLogical(Opcode op, int32_t a, int32_t b);    // Khushi Ji
-ALUResult computeShift(Opcode op, int32_t a, int32_t b);      // Saanvi Ji
+
+// 3. The formal ALU Class (Assignment Requirement)
+class ALU 
+{
+public:
+    // The public interface the EX stage will call
+    ALUResult execute(Opcode op, int32_t operand1, int32_t operand2);
+
+private:
+    // Internal helper structures (used by the CLA implementation)
+    struct AdderOutput 
+    {
+        uint32_t sum;
+        bool carryOut;
+    };
+
+    // Low-level mathematical primitives
+    AdderOutput carryLookaheadAdd(uint32_t a, uint32_t b, bool carryIn);
+    uint32_t negateCLA(uint32_t x);
+    void restoringDivide(uint32_t dividend, uint32_t divisor, uint32_t& quotient, uint32_t& remainder);
+
+    // Operation group dispatchers (Written by the team)
+    ALUResult computeArithmetic(Opcode op, int32_t a, int32_t b);
+    ALUResult computeLogical(Opcode op, int32_t a, int32_t b);    
+    ALUResult computeShift(Opcode op, int32_t a, int32_t b);      
+};
+
+} // namespace risc201
