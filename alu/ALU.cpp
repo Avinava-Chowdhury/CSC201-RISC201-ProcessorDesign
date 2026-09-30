@@ -27,6 +27,7 @@ ALUResult execute(Opcode op, int32_t operand1, int32_t operand2)
         
         case Opcode::AND:
         case Opcode::OR:
+        case Opcode::XOR:
         case Opcode::NOT:
         case Opcode::MOV:
         case Opcode::CMP:
