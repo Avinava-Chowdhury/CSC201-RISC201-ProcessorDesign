@@ -125,4 +125,10 @@ void CPU::stepInstruction() {
             break;
     }
 
+    // PHASE 5: WRITEBACK
+    // check if this operation writes to a register.
+    if (risc201::modifiesDestinationRegister(instr.operation)) {
+        reg[instr.destinationRegister] = aluResult;
+    }
+
 }
