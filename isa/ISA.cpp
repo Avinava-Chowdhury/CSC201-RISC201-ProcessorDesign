@@ -334,6 +334,7 @@ bool modifiesDestinationRegister(OperationCode op)
     case OperationCode::ADD: case OperationCode::SUB: case OperationCode::MUL:
     case OperationCode::DIV: case OperationCode::MOD:
     case OperationCode::AND: case OperationCode::OR:  case OperationCode::NOT:
+    case OperationCode::XOR:
     case OperationCode::MOV:
     case OperationCode::LSL: case OperationCode::LSR: case OperationCode::ASR:
     case OperationCode::ROL: case OperationCode::ROR:
