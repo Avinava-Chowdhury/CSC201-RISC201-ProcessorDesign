@@ -305,7 +305,19 @@ ALUResult computeLogical(Opcode op, int32_t a, int32_t b)
             result.value = out;
             break;
         }
-      
+       
+       case Opcode::XOR: {
+            int32_t out = 0;
+            for (int i = 0; i < 32; i++) {
+                int bitA = (a >> i) & 1;
+                int bitB = (b >> i) & 1;
+                int bitResult = bitA ^ bitB;    // XOR gate: 1 only when the two bits differ
+                out |= (bitResult << i);
+            }
+            result.value = out;
+            break;
+        }
+       
         case Opcode::NOT: {
             // NOT is SINGLE_ARG, reads sourceRegister1, so the real input is 'a'
             int32_t out = 0;
