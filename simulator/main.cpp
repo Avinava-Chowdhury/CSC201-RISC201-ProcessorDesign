@@ -64,9 +64,9 @@ int main() {
             std::cout << "--- Processor State ---\n";
             std::cout << "PC: 0x" << std::hex << cpu.pc << std::dec << "\n";
             for (int i = 0; i < 16; i++) {
-                // Print registers in a clean grid
+                // Print registers in a clean grid with right-aligned hex values
                 std::cout << "r" << std::left << std::setw(2) << i << ": 0x" 
-                          << std::hex << std::setfill('0') << std::setw(8) << cpu.reg[i] 
+                          << std::right << std::hex << std::setfill('0') << std::setw(8) << static_cast<uint32_t>(cpu.reg[i]) 
                           << std::dec << std::setfill(' ') << "\t";
                 if ((i + 1) % 4 == 0) std::cout << "\n";
             }
