@@ -11,7 +11,7 @@ The `constexpr` values define the immutable hardware boundaries of the processor
 * **Helper Functions:** `getRegisterName` and `parseRegisterName` convert between human-readable register strings (e.g., "r7", "sp") and their integer indices.
 
 ## 2. Operation Codes (`OperationCode`)
-This `enum class` maps every supported assembly instruction to a unique 5-bit hardware opcode. It includes standard arithmetic (`ADD`, `SUB`, `MUL`, `DIV`, `MOD`), logic operations (`AND`, `OR`, `NOT`, `LSL`, `LSR`, `ASR`), memory access (`LD`, `ST`), control flow (`BEQ`, `BGT`, `B`, `CALL`, `RET`), and utility operations (`CMP`, `NOP`, `MOV`). 
+This `enum class` maps every supported assembly instruction to a unique 5-bit hardware opcode. It includes standard arithmetic (`ADD`, `SUB`, `MUL`, `DIV`, `MOD`), logic operations (`AND`, `OR`, `XOR`, `NOT`, `LSL`, `LSR`, `ASR`), memory access (`LD`, `ST`), control flow (`BEQ`, `BGT`, `B`, `CALL`, `RET`), and utility operations (`CMP`, `NOP`, `MOV`). 
 
 ## 3. Instruction Layouts and Syntax
 Instructions are strictly 32 bits long, partitioned into structural categories to guide the hardware decoder.
