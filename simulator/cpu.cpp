@@ -158,3 +158,85 @@ void CPU::do_ID() {
     id_ex.val2 = op2;
     id_ex.ctrl = ctrlWord; // Carry the control word forward to EX stage
 }
+
+// STAGE 3: EXECUTE
+
+void CPU::do_EX() {
+    // If there's no instruction currently sitting in the execute latch, stay idle
+    if (!id_ex.active) {
+        ex_memwb.active = false;
+        return;
+    }
+
+    // 1. Pass the inputs and the microcode's aluOp directly to the ALU
+    risc201::ALUResult aluOut = alu.execute(id_ex.ctrl.aluOp, id_ex.val1, id_ex.val2);
+
+    // 2. Did the microcode tell us this instruction updates flags? (e.g. CMP)
+    if (id_ex.ctrl.updateFlags) {
+        flags.IsEqual = (id_ex.val1 == id_ex.val2);
+        flags.IsGreaterThan = (id_ex.val1 > id_ex.val2);
+    }
+
+    // 3. See if we need to take a branch
+    bool takeBranch = false;
+    uint32_t targetPC = 0;
+
+    switch (id_ex.ctrl.branchType) {
+        case BranchControl::NONE:
+            break;
+            
+        case BranchControl::COND_EQ:
+            if (flags.IsEqual) {
+                takeBranch = true;
+                targetPC = id_ex.pc + id_ex.decoded.branchJumpDistance;
+            }
+            break;
+            
+        case BranchControl::COND_GT:
+            if (flags.IsGreaterThan) {
+                takeBranch = true;
+                targetPC = id_ex.pc + id_ex.decoded.branchJumpDistance;
+            }
+            break;
+            
+        case BranchControl::UNCOND:
+            takeBranch = true;
+            targetPC = id_ex.pc + id_ex.decoded.branchJumpDistance;
+            break;
+            
+        case BranchControl::CALL:
+            takeBranch = true;
+            targetPC = id_ex.pc + id_ex.decoded.branchJumpDistance;
+            // For a call, the ALU result we pass to writeback is the return address (PC + 4)
+            aluOut.value = id_ex.pc + risc201::BYTES_PER_WORD;
+            break;
+            
+        case BranchControl::RET:
+            takeBranch = true;
+            targetPC = static_cast<uint32_t>(reg[risc201::RETURN_ADDRESS_REG_INDEX]);
+            break;
+    }
+
+    // Branch taken: redirect the program counter and kill whatever instruction got fetched behind us
+    if (takeBranch) {
+        pc = targetPC;
+        if_id.active = false;
+    }
+
+    // 4. Pack the output latch for memory/writeback
+    ex_memwb.active = true;
+    ex_memwb.pc = id_ex.pc;
+    
+    // CALL always saves to r15; everything else saves to rd
+    ex_memwb.dest_reg = (id_ex.ctrl.branchType == BranchControl::CALL)
+                        ? static_cast<uint8_t>(risc201::RETURN_ADDRESS_REG_INDEX)
+                        : id_ex.decoded.destinationRegister;
+
+    ex_memwb.alu_result = aluOut.value;
+    
+    // If this turns out to be an ST instruction, the value we want to write into RAM is sitting in rd
+    ex_memwb.store_data = reg[id_ex.decoded.destinationRegister];
+    
+    // Forward the control word so MEM_WB knows whether to write to RAM or registers
+    ex_memwb.ctrl = id_ex.ctrl;
+}
