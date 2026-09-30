@@ -113,13 +113,39 @@ void CPU::stepInstruction() {
             break;
 
         // 4. Memory Operations 
-        case risc201::OperationCode::LD:
-            // coming up
-            break;
+        case risc201::OperationCode::LD: {
+            // Calculate physical memory address[cite: 4]
+            uint32_t memAddr = reg[instr.sourceRegister1] + instr.calculateFinalConstantValue();
             
-        case risc201::OperationCode::ST:
-            // coming up
+            // exception handling coming up
+            
+            // Read 4 consecutive bytes from dataMem and combine them into a 32-bit word (Little-Endian)
+            uint32_t loadedWord = 0;
+            loadedWord |= dataMem[memAddr];
+            loadedWord |= (dataMem[memAddr + 1] << 8);
+            loadedWord |= (dataMem[memAddr + 2] << 16);
+            loadedWord |= (dataMem[memAddr + 3] << 24);
+            
+            aluResult = loadedWord; // Phase 5 will write this into the destination register
             break;
+        }
+            
+        case risc201::OperationCode::ST: {
+            // Calculate physical memory address[cite: 4]
+            uint32_t memAddr = reg[instr.sourceRegister1] + instr.calculateFinalConstantValue();
+            
+            // exception coming up
+            
+            // The data to save is sitting in the destination register[cite: 4]
+            uint32_t dataToStore = reg[instr.destinationRegister];
+            
+            // Break the 32-bit word into 4 bytes and save them to dataMem
+            dataMem[memAddr] = dataToStore & 0xFF;
+            dataMem[memAddr + 1] = (dataToStore >> 8) & 0xFF;
+            dataMem[memAddr + 2] = (dataToStore >> 16) & 0xFF;
+            dataMem[memAddr + 3] = (dataToStore >> 24) & 0xFF;
+            break;
+        }
 
         default:
             break;
