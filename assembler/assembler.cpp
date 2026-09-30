@@ -54,7 +54,7 @@ bool Assembler::assemble()
         // This happens before Pass 1 because macros can become
         // multiple instructions and therefore affect addresses.
         // ---------------------------------------------------------
-        vector<string> expandedLines = expandMacroLines(rawLines);
+        vector<string> expandedLines = expandMacroLines(splitLabelLines(rawLines));
 
         // ---------------------------------------------------------
         // Step 2: Pass 1
