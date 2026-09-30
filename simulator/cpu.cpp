@@ -98,3 +98,63 @@ void CPU::loadControlStore() {
     set_entry(Op::CALL, true,  false, false, false, BranchControl::CALL,    Op::ADD);
     set_entry(Op::RET,  false, false, false, false, BranchControl::RET,     Op::ADD);
 }
+
+// STAGE 1: INSTRUCTION FETCH (IF)
+void CPU::do_IF() {
+    // If PC points beyond instruction memory, mark the latch inactive
+    if (pc / risc201::BYTES_PER_WORD >= instrMem.size()) {
+        if_id.active = false;
+        return;
+    }
+
+    // Read the 32-bit word from memory
+    if_id.instruction = instrMem[pc / risc201::BYTES_PER_WORD];
+    if_id.pc = pc;
+    if_id.active = true;
+
+    //  advance PC to next sequential instruction
+    pc += risc201::BYTES_PER_WORD;
+}
+
+// STAGE 2: INSTRUCTION DECODE & CONTROL ROM LOOKUP (ID)
+void CPU::do_ID() {
+    // If previous stage has no valid instruction, deactivate
+    if (!if_id.active) {
+        id_ex.active = false;
+        return;
+    }
+
+    // Decode bitfields (opcode, registers, constants)
+    auto decodedOpt = risc201::convertFromBinary(if_id.instruction);
+    if (!decodedOpt.has_value()) {
+        throw SimException("Hardware Crash: Invalid opcode detected at PC " + std::to_string(if_id.pc));
+    }
+    risc201::DecodedInstruction instr = decodedOpt.value();
+
+    // Horizontal Microprogramming: Fetch control word from ROM
+    size_t opIdx = static_cast<size_t>(instr.operation);
+    MicroInstruction ctrlWord = (opIdx < CONTROL_STORE_SIZE) ? controlStore[opIdx] : controlStore[0];
+
+    // Read Register File / Constants
+    int32_t op1 = 0;
+    int32_t op2 = 0;
+
+    // Single-argument operations (MOV, NOT, NEG, ABS) read into op1
+    if (instr.operation == risc201::OperationCode::MOV || 
+        instr.operation == risc201::OperationCode::NOT ||
+        instr.operation == risc201::OperationCode::NEG ||
+        instr.operation == risc201::OperationCode::ABS) {
+        op1 = instr.usesConstantNumber ? instr.calculateFinalConstantValue() : reg[instr.sourceRegister1];
+    } else {
+        op1 = reg[instr.sourceRegister1];
+        op2 = instr.usesConstantNumber ? instr.calculateFinalConstantValue() : reg[instr.sourceRegister2];
+    }
+
+    // Latch values into ID_EX
+    id_ex.active = true;
+    id_ex.pc = if_id.pc;
+    id_ex.decoded = instr;
+    id_ex.val1 = op1;
+    id_ex.val2 = op2;
+    id_ex.ctrl = ctrlWord; // Carry the control word forward to EX stage
+}
