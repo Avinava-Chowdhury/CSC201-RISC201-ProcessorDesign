@@ -101,15 +101,29 @@ void CPU::stepInstruction() {
 
         // 3. Branching Operations 
         case risc201::OperationCode::B:
-            // Unconditional branch: Add the jump distance to the PC
-            pc += instr.branchJumpDistance; 
+            // Because Phase 2 already did 'pc += 4', we must subtract 4 before adding the distance.
+            pc = (pc - 4) + instr.branchJumpDistance; 
             break;
             
         case risc201::OperationCode::BEQ:
-            // Branch if Equal: Only jump if the last CMP set IsEqual to true
             if (flags.IsEqual) {
-                pc += instr.branchJumpDistance;
+                pc = (pc - 4) + instr.branchJumpDistance;
             }
+            break;
+
+        case risc201::OperationCode::CALL:
+            // 1. Save the return address. 
+            // Phase 2 already advanced 'pc' by 4, so it perfectly points to the next instruction.
+            // We write this address into the Return Address register (r15).
+            reg[risc201::RETURN_ADDRESS_REG_INDEX] = pc;
+            
+            // 2. Jump to the function (using the same offset correction as above).
+            pc = (pc - 4) + instr.branchJumpDistance;
+            break;
+            
+        case risc201::OperationCode::RET:
+            // Overwrite the PC with the address we previously saved in r15.
+            pc = reg[risc201::RETURN_ADDRESS_REG_INDEX];
             break;
 
         // 4. Memory Operations 
