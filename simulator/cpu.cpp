@@ -1,4 +1,5 @@
 #include "cpu.h"
+#include "sim_exception.h"
 #include <fstream>
 #include <string>
 
@@ -51,8 +52,7 @@ void CPU::stepInstruction() {
     // PHASE 2: DECODE 
     auto decodedOpt = risc201::convertFromBinary(rawInstruction); // isa's cfb acts as decoder unit adds 4 to pc
     if (!decodedOpt.has_value()) {
-        //exception logic
-        return;
+        throw SimException("Hardware Crash: Invalid opcode detected at PC " + std::to_string(pc));
     }
     risc201::DecodedInstruction instr = decodedOpt.value();
 
@@ -131,7 +131,14 @@ void CPU::stepInstruction() {
             // Calculate physical memory address[cite: 4]
             uint32_t memAddr = reg[instr.sourceRegister1] + instr.calculateFinalConstantValue();
             
-            // exception handling coming up
+            // 65536 is max size. We read 4 bytes, so max address is 65532
+            if (memAddr > 65532) {
+                throw SimException("Hardware Crash: Out-of-bounds memory access at " + std::to_string(memAddr));
+            }
+            // Address must be perfectly divisible by 4
+            if (memAddr % 4 != 0) {
+                throw SimException("Hardware Crash: Misaligned memory access at " + std::to_string(memAddr));
+            }
             
             // Read 4 consecutive bytes from dataMem and combine them into a 32-bit word (Little-Endian)
             uint32_t loadedWord = 0;
@@ -148,7 +155,14 @@ void CPU::stepInstruction() {
             // Calculate physical memory address[cite: 4]
             uint32_t memAddr = reg[instr.sourceRegister1] + instr.calculateFinalConstantValue();
             
-            // exception coming up
+            // 65536 is max size. We read 4 bytes, so max address is 65532
+            if (memAddr > 65532) {
+                throw SimException("Hardware Crash: Out-of-bounds memory access at " + std::to_string(memAddr));
+            }
+            // Address must be perfectly divisible by 4
+            if (memAddr % 4 != 0) {
+                throw SimException("Hardware Crash: Misaligned memory access at " + std::to_string(memAddr));
+            }
             
             // The data to save is sitting in the destination register[cite: 4]
             uint32_t dataToStore = reg[instr.destinationRegister];
@@ -169,6 +183,13 @@ void CPU::stepInstruction() {
     // check if this operation writes to a register.
     if (risc201::modifiesDestinationRegister(instr.operation)) {
         reg[instr.destinationRegister] = aluResult;
+    }
+
+    
+    // Ensure the stack pointer hasn't violated its physical hardware boundaries.
+    uint32_t currentSP = reg[risc201::STACK_POINTER_REG_INDEX];
+    if (currentSP < risc201::STACK_LOWEST_LIMIT || currentSP > risc201::STACK_STARTING_ADDRESS) {
+        throw SimException("Hardware Crash: Stack pointer out of bounds (Value: " + std::to_string(currentSP) + ")");
     }
 
 }
