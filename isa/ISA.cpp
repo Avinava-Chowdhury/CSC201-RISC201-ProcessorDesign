@@ -65,8 +65,15 @@ const char* getRegisterName(uint8_t registerIndex)
     return kRegisterNames[registerIndex];
 }
 
-int parseRegisterName(const std::string& regName)
+int parseRegisterName(const std::string& originalName)
 {
+    
+    std::string regName = originalName;
+    for (char& c : regName)
+    {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+
     if (regName == "sp")
     {
         return STACK_POINTER_REG_INDEX;
@@ -76,8 +83,7 @@ int parseRegisterName(const std::string& regName)
         return RETURN_ADDRESS_REG_INDEX;
     }
 
-    // Expect the form "rN" where N is 0..TOTAL_REGISTERS-1.
-    if (regName.size() < 2 || (regName[0] != 'r' && regName[0] != 'R'))
+    if (regName.size() < 2 || regName[0] != 'r')
     {
         return -1;
     }
