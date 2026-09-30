@@ -27,23 +27,43 @@ std::vector<std::string> tokenizeLine(const std::string& line)
         return tokens;
     }
 
-    // a label line is just one word ending in a colon, leave it as is
-    // so whoever calls this can check for the colon and handle it separately
+    // a lone label line, just one word ending in a colon
     if (tokens.size() == 1 && tokens[0].back() == ':') {
         return tokens;
     }
 
-    // catch typos early - make sure the instruction name is real
-    const OperationDetails* details = findByAssemblyText(tokens[0]);
-    if (!details) {
-        throw std::invalid_argument("unknown instruction: " + tokens[0]);
+    // a label followed by an instruction on the same line,
+    // e.g. "start: add r1, r2, r3" - leave the label token where it is,
+    // just validate the instruction part that comes after it
+    size_t instructionStart = 0;
+    if (tokens[0].back() == ':') {
+        instructionStart = 1;
+        if (instructionStart == tokens.size()) {
+            return tokens; // label only, nothing follows it
+        }
     }
-   if (details->assemblyFormat == AssemblySyntax::JUMP_TO_LABEL ||
-        details->assemblyFormat == AssemblySyntax::NO_ARGS) {
+
+    // mnemonics aren't case sensitive, normalize before lookup
+    std::string& mnemonic = tokens[instructionStart];
+    for (char& c : mnemonic) {
+        c = (char)tolower((unsigned char)c);
+    }
+
+    // make sure the instruction name is real
+    const OperationDetails* details = findByAssemblyText(mnemonic);
+    if (!details) {
+        throw std::invalid_argument("unknown instruction: " + mnemonic);
+    }
+    
+    if (details->assemblyFormat == AssemblySyntax::JUMP_TO_LABEL ||
+        details->assemblyFormat == AssemblySyntax::NO_ARGS ||
+        details->assemblyFormat == AssemblySyntax::LOAD_MEMORY ||
+        details->assemblyFormat == AssemblySyntax::STORE_MEMORY) {
         return tokens;
     }
+
     // check every other token that looks like a register actually is one
-    for (size_t i = 1; i < tokens.size(); i++) {
+    for (size_t i = instructionStart + 1; i < tokens.size(); i++) {
         bool looksLikeNumber = isdigit((unsigned char)tokens[i][0]) || tokens[i][0] == '-';
         if (!looksLikeNumber) {
             int reg = parseRegisterName(tokens[i]);
