@@ -55,10 +55,22 @@ std::vector<std::string> tokenizeLine(const std::string& line)
         throw std::invalid_argument("unknown instruction: " + mnemonic);
     }
     
-    if (details->assemblyFormat == AssemblySyntax::JUMP_TO_LABEL ||
-        details->assemblyFormat == AssemblySyntax::NO_ARGS ||
-        details->assemblyFormat == AssemblySyntax::LOAD_MEMORY ||
+    if (details->assemblyFormat == AssemblySyntax::LOAD_MEMORY ||
         details->assemblyFormat == AssemblySyntax::STORE_MEMORY) {
+        const size_t operandStart = instructionStart + 2;   // after mnemonic and register
+        if (tokens.size() > operandStart + 1) {
+            std::string memoryOperand;
+            for (size_t i = operandStart; i < tokens.size(); i++) {
+                memoryOperand += tokens[i];
+            }
+            tokens.resize(operandStart);
+            tokens.push_back(memoryOperand);
+        }
+        return tokens;
+    }
+
+    if (details->assemblyFormat == AssemblySyntax::JUMP_TO_LABEL ||
+        details->assemblyFormat == AssemblySyntax::NO_ARGS) {
         return tokens;
     }
 
