@@ -44,7 +44,8 @@ enum class OperationCode : uint8_t
     LD  = 14, ST  = 15,
     BEQ = 16, BGT = 17, B = 18, CALL = 19, RET = 20,
         NEG = 21, ABS = 22, MIN = 23, MAX = 24,
-    ROL = 25, ROR = 26
+    ROL = 25, ROR = 26,
+    XOR = 27
 };
 
 using Opcode = OperationCode;
