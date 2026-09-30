@@ -2,6 +2,7 @@
 #include "sim_exception.h"
 #include <fstream>
 #include <string>
+#include <cmath> // Added for std::abs
 
 //CPU register file, memories, reset
 CPU::CPU() {
@@ -13,16 +14,16 @@ void CPU::reset() {
     for (int i = 0; i < 16; i++) {
         reg[i] = 0;
     }
-    // sp (r14) starts at 0x10000[cite: 8] since stack grows downwards
+    // sp (r14) starts at 0x10000 since stack grows downwards
     reg[risc201::STACK_POINTER_REG_INDEX] = risc201::STACK_STARTING_ADDRESS; 
     pc = 0;
     
-    // Clear flags[cite: 8]
+    // Clear flags
     flags.IsEqual = false;
     flags.IsGreaterThan = false;
 }
 
-// CPU hex loader[cite: 8]
+// CPU hex loader
 bool CPU::loadHex(const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open()) return false;
@@ -30,10 +31,9 @@ bool CPU::loadHex(const std::string& path) {
     std::string line;
     uint32_t memIndex = 0;
     
-    // Parse "0x...." lines into instrMem[cite: 8]
+    // Parse "0x...." lines into instrMem
     while (std::getline(file, line)) {
         if (line.empty()) continue;
-        
         
         // Adding a boundary safeguard here to prevent vector overflow
         if (memIndex >= 4096) break; 
@@ -76,7 +76,7 @@ void CPU::stepInstruction() {
     // Rule: Three-argument operations (ADD, SUB, CMP, etc.)
     else {
         operand1 = reg[instr.sourceRegister1]; // Always reads the first register
-        operand2 = instr.usesConstantNumber ? instr.calculateFinalConstantValue() : reg[instr.sourceRegister2]; // Second input is either a constant or the second register[cite: 3]
+        operand2 = instr.usesConstantNumber ? instr.calculateFinalConstantValue() : reg[instr.sourceRegister2]; // Second input is either a constant or the second register
     }
 
     // PHASE 4: EXECUTE
@@ -84,7 +84,24 @@ void CPU::stepInstruction() {
 
     switch (instr.operation) {
         
-        // 1. ALU Operations 
+        // 1. Single-Argument ALU Operations (Previously Missing)
+        case risc201::OperationCode::MOV:
+            aluResult = operand1;
+            break;
+            
+        case risc201::OperationCode::NOT:
+            aluResult = ~operand1;
+            break;
+            
+        case risc201::OperationCode::NEG:
+            aluResult = -operand1;
+            break;
+            
+        case risc201::OperationCode::ABS:
+            aluResult = std::abs(operand1);
+            break;
+
+        // 2. Two-Argument ALU Operations
         case risc201::OperationCode::ADD:
             aluResult = operand1 + operand2;
             break;
@@ -93,13 +110,64 @@ void CPU::stepInstruction() {
             aluResult = operand1 - operand2;
             break;
             
-        // 2. State Operations 
+        case risc201::OperationCode::MUL:
+            aluResult = operand1 * operand2;
+            break;
+            
+        case risc201::OperationCode::DIV:
+            if (operand2 == 0) throw SimException("Hardware Crash: Division by zero");
+            aluResult = operand1 / operand2;
+            break;
+            
+        case risc201::OperationCode::MOD:
+            if (operand2 == 0) throw SimException("Hardware Crash: Modulo by zero");
+            aluResult = operand1 % operand2;
+            break;
+
+        case risc201::OperationCode::AND:
+            aluResult = operand1 & operand2;
+            break;
+
+        case risc201::OperationCode::OR:
+            aluResult = operand1 | operand2;
+            break;
+
+        case risc201::OperationCode::LSL:
+            aluResult = operand1 << (operand2 & 31);
+            break;
+
+        case risc201::OperationCode::LSR:
+            // Cast to unsigned to force logical shift right instead of arithmetic
+            aluResult = static_cast<int32_t>(static_cast<uint32_t>(operand1) >> (operand2 & 31));
+            break;
+
+        case risc201::OperationCode::ASR:
+            aluResult = operand1 >> (operand2 & 31);
+            break;
+
+        case risc201::OperationCode::MIN:
+            aluResult = (operand1 < operand2) ? operand1 : operand2;
+            break;
+
+        case risc201::OperationCode::MAX:
+            aluResult = (operand1 > operand2) ? operand1 : operand2;
+            break;
+
+        case risc201::OperationCode::ROL:
+            aluResult = (operand1 << (operand2 & 31)) | (static_cast<uint32_t>(operand1) >> (32 - (operand2 & 31)));
+            break;
+
+        case risc201::OperationCode::ROR:
+            aluResult = (static_cast<uint32_t>(operand1) >> (operand2 & 31)) | (operand1 << (32 - (operand2 & 31)));
+            break;
+            
+        // 3. State Operations 
         case risc201::OperationCode::CMP:
             flags.IsEqual = (operand1 == operand2);
             flags.IsGreaterThan = (operand1 > operand2);
             break;
 
-        // 3. Branching Operations 
+        // 4. Branching Operations 
         case risc201::OperationCode::B:
             // Because Phase 2 already did 'pc += 4', we must subtract 4 before adding the distance.
             pc = (pc - 4) + instr.branchJumpDistance; 
@@ -107,6 +175,12 @@ void CPU::stepInstruction() {
             
         case risc201::OperationCode::BEQ:
             if (flags.IsEqual) {
+                pc = (pc - 4) + instr.branchJumpDistance;
+            }
+            break;
+            
+        case risc201::OperationCode::BGT: // Previously Missing
+            if (flags.IsGreaterThan) {
                 pc = (pc - 4) + instr.branchJumpDistance;
             }
             break;
@@ -126,9 +200,9 @@ void CPU::stepInstruction() {
             pc = reg[risc201::RETURN_ADDRESS_REG_INDEX];
             break;
 
-        // 4. Memory Operations 
+        // 5. Memory Operations 
         case risc201::OperationCode::LD: {
-            // Calculate physical memory address[cite: 4]
+            // Calculate physical memory address
             uint32_t memAddr = reg[instr.sourceRegister1] + instr.calculateFinalConstantValue();
             
             // 65536 is max size. We read 4 bytes, so max address is 65532
@@ -152,7 +226,7 @@ void CPU::stepInstruction() {
         }
             
         case risc201::OperationCode::ST: {
-            // Calculate physical memory address[cite: 4]
+            // Calculate physical memory address
             uint32_t memAddr = reg[instr.sourceRegister1] + instr.calculateFinalConstantValue();
             
             // 65536 is max size. We read 4 bytes, so max address is 65532
@@ -164,7 +238,7 @@ void CPU::stepInstruction() {
                 throw SimException("Hardware Crash: Misaligned memory access at " + std::to_string(memAddr));
             }
             
-            // The data to save is sitting in the destination register[cite: 4]
+            // The data to save is sitting in the destination register
             uint32_t dataToStore = reg[instr.destinationRegister];
             
             // Break the 32-bit word into 4 bytes and save them to dataMem
