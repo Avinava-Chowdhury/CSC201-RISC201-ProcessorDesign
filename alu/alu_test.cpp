@@ -41,6 +41,12 @@ void testLogical() {
     
     assertTest("AND: 0b1100 & 0b1010", execute(Opcode::AND, 12, 10), 8, false, false, false);
     assertTest("OR:  0b1100 | 0b1010", execute(Opcode::OR, 12, 10), 14, false, false, false);
+    assertTest("XOR: 0b1100 ^ 0b1010", execute(Opcode::XOR, 12, 10), 6, false, false, false);
+    assertTest("XOR: x ^ x = 0", execute(Opcode::XOR, 1234, 1234), 0, true, false, false);
+    assertTest("XOR: x ^ 0 = x", execute(Opcode::XOR, 42, 0), 42, false, false, false);
+    assertTest("XOR: x ^ -1 = ~x", execute(Opcode::XOR, 5, -1), -6, false, false, false);
+    assertTest("XOR: sign bit ^ sign bit", execute(Opcode::XOR, INT32_MIN, INT32_MIN), 0, true, false, false);
+    assertTest("XOR: INT_MIN ^ 1", execute(Opcode::XOR, INT32_MIN, 1), INT32_MIN + 1, false, false, false);
     assertTest("NOT: ~0", execute(Opcode::NOT, 0, 0), -1, false, false, false); 
     
     assertTest("MOV: Pass-through 42", execute(Opcode::MOV, 42, 0), 42, false, false, false);
