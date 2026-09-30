@@ -69,7 +69,7 @@ int main(int argc, char* argv[])
 
     try
     {
-        vector<string> expanded = expandMacroLines(rawLines);
+        vector<string> expanded = expandMacroLines(splitLabelLines(rawLines));
         printAddressListing(expanded);
         printSymbolTable(buildSymbolTable(expanded));
     }
