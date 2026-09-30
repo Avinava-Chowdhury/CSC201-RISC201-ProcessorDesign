@@ -79,4 +79,50 @@ void CPU::stepInstruction() {
         operand2 = instr.usesConstantNumber ? instr.calculateFinalConstantValue() : reg[instr.sourceRegister2]; // Second input is either a constant or the second register[cite: 3]
     }
 
+    // PHASE 4: EXECUTE
+    int32_t aluResult = 0; 
+
+    switch (instr.operation) {
+        
+        // 1. ALU Operations 
+        case risc201::OperationCode::ADD:
+            aluResult = operand1 + operand2;
+            break;
+            
+        case risc201::OperationCode::SUB:
+            aluResult = operand1 - operand2;
+            break;
+            
+        // 2. State Operations 
+        case risc201::OperationCode::CMP:
+            flags.IsEqual = (operand1 == operand2);
+            flags.IsGreaterThan = (operand1 > operand2);
+            break;
+
+        // 3. Branching Operations 
+        case risc201::OperationCode::B:
+            // Unconditional branch: Add the jump distance to the PC
+            pc += instr.branchJumpDistance; 
+            break;
+            
+        case risc201::OperationCode::BEQ:
+            // Branch if Equal: Only jump if the last CMP set IsEqual to true
+            if (flags.IsEqual) {
+                pc += instr.branchJumpDistance;
+            }
+            break;
+
+        // 4. Memory Operations 
+        case risc201::OperationCode::LD:
+            // coming up
+            break;
+            
+        case risc201::OperationCode::ST:
+            // coming up
+            break;
+
+        default:
+            break;
+    }
+
 }
