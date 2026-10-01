@@ -1,6 +1,5 @@
 // isa.h -- RISC201 instruction set definition
 #pragma once
-
 #include <cstdint>
 #include <optional>
 #include <string>
