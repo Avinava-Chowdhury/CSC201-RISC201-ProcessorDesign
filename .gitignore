@@ -1,2 +1,5 @@
 sim
 asm_tool
+*.exe
+*.o
+*.hex
