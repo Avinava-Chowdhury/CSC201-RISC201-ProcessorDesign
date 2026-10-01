@@ -41,9 +41,3 @@ uint32_t encode(const risc201::DecodedInstruction& instr);
 //                    mov r1, 0xHHHHh           otherwise (2 instructions:
 //                    or  r1, r1, 0xLLLLu        upper half, then OR in lower half)
 std::vector<std::string> expandMacroLines(const std::vector<std::string>& rawLines);
-
-// Same expansion (it shares the same code), but on already-tokenized lines.
-// Only usable if the tokens were produced without the tokenizer's mnemonic
-// check rejecting the macro names first.
-std::vector<std::vector<std::string>> expandMacros(
-    const std::vector<std::vector<std::string>>& tokenLines);
