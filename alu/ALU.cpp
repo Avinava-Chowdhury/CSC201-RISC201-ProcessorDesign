@@ -136,31 +136,43 @@ ALUResult ALU::computeArithmetic(Opcode op, int32_t a, int32_t b) {
         }
 
         case Opcode::MUL: {
-            bool signA = (a >> 31) & 1, signB = (b >> 31) & 1;
-            uint32_t absA = signA ? negateCLA((uint32_t)a) : (uint32_t)a;
-            uint32_t absB = signB ? negateCLA((uint32_t)b) : (uint32_t)b;
+            bool Aext = false;
+            uint32_t A = 0;
+            uint32_t Q = (uint32_t)b;
+            uint32_t M = (uint32_t)a;
+            bool Mext = (M >> 31) & 1;
 
-            uint32_t prodLow = 0, prodHigh = 0;
+            AdderOutput negLow = carryLookaheadAdd(~M, 0, true);
+            uint32_t negM = negLow.sum;
+            bool negMext = (!Mext) ^ negLow.carryOut;
+
+            bool Qm1 = false;
+
             for (int i = 0; i < 32; i++) {
-                if ((absB >> i) & 1) {
-                    uint32_t addLow = absA << i;
-                    uint32_t addHigh = (i == 0) ? 0 : (absA >> (32 - i));
-                    AdderOutput lowR = carryLookaheadAdd(prodLow, addLow, false);
-                    prodLow = lowR.sum;
-                    AdderOutput highR = carryLookaheadAdd(prodHigh, addHigh, lowR.carryOut);
-                    prodHigh = highR.sum;
+                bool Q0 = Q & 1;
+
+                if (Q0 && !Qm1) {
+                    AdderOutput r = carryLookaheadAdd(A, negM, false);
+                    Aext = Aext ^ negMext ^ r.carryOut;
+                    A = r.sum;
+                } else if (!Q0 && Qm1) {
+                    AdderOutput r = carryLookaheadAdd(A, M, false);
+                    Aext = Aext ^ Mext ^ r.carryOut;
+                    A = r.sum;
                 }
+
+                Qm1 = Q0;
+                uint32_t Alsb = A & 1;
+                Q = (Q >> 1) | (Alsb << 31);
+                A = (A >> 1) | (Aext ? (1u << 31) : 0);
             }
 
-            bool resultNegative = (signA != signB);
-            bool overflow = (prodHigh != 0);
-            if (resultNegative) {
-                if (prodLow > 0x80000000u) overflow = true;
-                result.value = (int32_t)negateCLA(prodLow);
-            } else {
-                if (prodLow > 0x7FFFFFFFu) overflow = true;
-                result.value = (int32_t)prodLow;
-            }
+            uint64_t highWord = A;
+            uint64_t product = (highWord << 32) | Q;
+            int64_t signedProduct = static_cast<int64_t>(product);
+            bool overflow = signedProduct < INT32_MIN || signedProduct > INT32_MAX;
+
+            result.value = (int32_t)Q;
             result.flags.overflow = overflow;
             result.flags.carry = overflow;
             break;
