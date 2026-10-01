@@ -401,22 +401,24 @@ ALUResult ALU::computeShift(Opcode op, int32_t a, int32_t b) {
             result.value = (int32_t)out;
             break;
         }
+case Opcode::ROR: {
+    uint32_t out = 0;
 
-        case Opcode::ROR: {
-            uint32_t out = 0;
-            for (int i = 0; i < 32; i++) {
-                int srcPos = i + amount;
-                if (srcPos >= 32) srcPos -= 32;     // wrap around
-                int bit = (ua >> srcPos) & 1;
-                out |= ((uint32_t)bit << i);
-            }
-            result.value = (int32_t)out;
-            break;
-        }
+    for (int i = 0; i < 32; i++) {
+        int destPos = i - amount;
 
-        default:
-            break;
+        if (destPos < 0)
+            destPos += 32;
+
+        int bit = (ua >> i) & 1;
+
+        out |= ((uint32_t)bit << destPos);
     }
+
+    result.value = (int32_t)out;
+    break;
+}
+       
 
     result.flags.zero = (result.value == 0);
     return result;
