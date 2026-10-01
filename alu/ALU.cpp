@@ -352,31 +352,44 @@ ALUResult ALU::computeShift(Opcode op, int32_t a, int32_t b) {
             break;
         }
 
-        case Opcode::LSR: {
-            uint32_t out = 0;
-            for (int i = 0; i < 32; i++) {
-                int srcPos = i + amount;
-                if (srcPos < 32) {
-                    int bit = (ua >> srcPos) & 1;
-                    out |= ((uint32_t)bit << i);
-                }
-            }
-            result.value = (int32_t)out;
-            break;
+       case Opcode::LSR:{
+    uint32_t out = 0;
+
+    for (int i = 0; i < 32; i++) {
+        int destPos = i - amount;
+
+        if (destPos >= 0) {
+            int bit = (ua >> i) & 1;
+            out |= ((uint32_t)bit << destPos);
         }
+    }
+
+    result.value = (int32_t)out;
+    break;
+       }
 
         case Opcode::ASR: {
-            uint32_t out = 0;
-            int signBit = (ua >> 31) & 1;
-            for (int i = 0; i < 32; i++) {
-                int srcPos = i + amount;
-                int bit = (srcPos < 32) ? (int)((ua >> srcPos) & 1) : signBit;
-                out |= ((uint32_t)bit << i);
-            }
-            result.value = (int32_t)out;
-            break;
-        }
+    uint32_t out = 0;
+    int signBit = (ua >> 31) & 1;
 
+    for (int i = 0; i < 32; i++) {
+        int destPos = i - amount;
+
+        if (destPos >= 0) {
+            int bit = (ua >> i) & 1;
+            out |= ((uint32_t)bit << destPos);
+        }
+    }
+
+    if (signBit) {
+        for (int i = 31; i >= 32 - amount; i--) {
+            out |= (1u << i);
+        }
+    }
+
+    result.value = (int32_t)out;
+    break;
+}
         case Opcode::ROL: {
             uint32_t out = 0;
             for (int i = 0; i < 32; i++) {
