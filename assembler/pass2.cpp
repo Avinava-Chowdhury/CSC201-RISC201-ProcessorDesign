@@ -3,10 +3,6 @@
 //   buildInstruction()   tokens + symbol table  ->  DecodedInstruction
 //   encode()             DecodedInstruction     ->  32-bit machine word
 //   expandMacroLines()   PUSH / POP / LI on raw text lines
-//   expandMacros()       the same expansion on already-tokenized lines
-//
-// Both macro functions share ONE expansion routine (expandOneLine below),
-// so the two can never drift apart.
 #include "pass2.h"
 
 #include <cctype>
@@ -195,11 +191,6 @@ namespace
                 " operand(s), got " + std::to_string(tokens.size() - 1));
         }
     }
-
-    // ---------------------------------------------------------------
-    // Macro expansion (shared by expandMacroLines and expandMacros)
-    // ---------------------------------------------------------------
-
     std::string hex(uint32_t value)
     {
         char buffer[16];
@@ -363,7 +354,7 @@ DecodedInstruction buildInstruction(
     if (isMacroName(lowered))
     {
         throw std::invalid_argument(
-            mnemonic + " is a macro, not a real instruction -- run expandMacroLines() / expandMacros() first");
+            mnemonic + " is a macro, not a real instruction -- run expandMacroLines() first");
     }
 
     const OperationDetails* details = findByAssemblyText(lowered);
@@ -543,23 +534,6 @@ std::vector<std::string> expandMacroLines(const std::vector<std::string>& rawLin
         for (const std::vector<std::string>& piece : expandOneLine(words))
         {
             expanded.push_back(joinWords(piece));
-        }
-    }
-
-    return expanded;
-}
-
-std::vector<std::vector<std::string>> expandMacros(
-    const std::vector<std::vector<std::string>>& tokenLines)
-{
-    std::vector<std::vector<std::string>> expanded;
-    expanded.reserve(tokenLines.size());
-
-    for (const auto& tokens : tokenLines)
-    {
-        for (const std::vector<std::string>& piece : expandOneLine(tokens))
-        {
-            expanded.push_back(piece);
         }
     }
 
