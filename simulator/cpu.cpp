@@ -73,7 +73,7 @@ void CPU::loadControlStore() {
 
     using Op = risc201::OperationCode;
 
-    // 2. Arithmetic & Logic Operations -> Run through ALU, write back to rd
+    // 2. Arithmetic & Logic Operations
     const std::vector<Op> computeOps = {
         Op::ADD, Op::SUB, Op::MUL, Op::DIV, Op::MOD,
         Op::AND, Op::OR,  Op::XOR, Op::NOT, Op::MOV,
@@ -84,10 +84,10 @@ void CPU::loadControlStore() {
         set_entry(op, true, false, false, false, BranchControl::NONE, op);
     }
 
-    // 3. Compare -> Computes (rs1 - rs2), latches flags, no register write
+    // 3. Compare
     set_entry(Op::CMP, false, false, false, true, BranchControl::NONE, Op::CMP);
 
-    // 4. Memory Operations -> ALU computes effective address (base + offset)
+    // 4. Memory Operations: effective address (base + offset)
     set_entry(Op::LD, true,  true,  false, false, BranchControl::NONE, Op::ADD);
     set_entry(Op::ST, false, false, true,  false, BranchControl::NONE, Op::ADD);
 
@@ -101,18 +101,15 @@ void CPU::loadControlStore() {
 
 // STAGE 1: INSTRUCTION FETCH (IF)
 void CPU::do_IF() {
-    // If PC points beyond instruction memory, mark the latch inactive
     if (pc / risc201::BYTES_PER_WORD >= instrMem.size()) {
         if_id.active = false;
         return;
     }
 
-    // Read the 32-bit word from memory
     if_id.instruction = instrMem[pc / risc201::BYTES_PER_WORD];
     if_id.pc = pc;
     if_id.active = true;
 
-    //  advance PC to next sequential instruction
     pc += risc201::BYTES_PER_WORD;
 }
 
@@ -135,11 +132,10 @@ void CPU::do_ID() {
     size_t opIdx = static_cast<size_t>(instr.operation);
     MicroInstruction ctrlWord = (opIdx < CONTROL_STORE_SIZE) ? controlStore[opIdx] : controlStore[0];
 
-    // Read Register File / Constants
     int32_t op1 = 0;
     int32_t op2 = 0;
 
-    // Single-argument operations (MOV, NOT, NEG, ABS) read into op1
+   
     if (instr.operation == risc201::OperationCode::MOV || 
         instr.operation == risc201::OperationCode::NOT ||
         instr.operation == risc201::OperationCode::NEG ||
@@ -162,22 +158,22 @@ void CPU::do_ID() {
 // STAGE 3: EXECUTE
 
 void CPU::do_EX() {
-    // If there's no instruction currently sitting in the execute latch, stay idle
+    
     if (!id_ex.active) {
         ex_memwb.active = false;
         return;
     }
 
-    // 1. Pass the inputs and the microcode's aluOp directly to the ALU
+    // Pass the inputs and the microcode's aluOp directly to the ALU
     risc201::ALUResult aluOut = alu.execute(id_ex.ctrl.aluOp, id_ex.val1, id_ex.val2);
 
-    // 2. Did the microcode tell us this instruction updates flags? (e.g. CMP)
+   
     if (id_ex.ctrl.updateFlags) {
         flags.IsEqual = (id_ex.val1 == id_ex.val2);
         flags.IsGreaterThan = (id_ex.val1 > id_ex.val2);
     }
 
-    // 3. See if we need to take a branch
+    // See if we need to take a branch
     bool takeBranch = false;
     uint32_t targetPC = 0;
 
@@ -207,7 +203,6 @@ void CPU::do_EX() {
         case BranchControl::CALL:
             takeBranch = true;
             targetPC = id_ex.pc + id_ex.decoded.branchJumpDistance;
-            // For a call, the ALU result we pass to writeback is the return address (PC + 4)
             aluOut.value = id_ex.pc + risc201::BYTES_PER_WORD;
             break;
             
@@ -217,13 +212,13 @@ void CPU::do_EX() {
             break;
     }
 
-    // Branch taken: redirect the program counter and kill whatever instruction got fetched behind us
+    // flush
     if (takeBranch) {
         pc = targetPC;
         if_id.active = false;
     }
 
-    // 4. Pack the output latch for memory/writeback
+    // output latch
     ex_memwb.active = true;
     ex_memwb.pc = id_ex.pc;
     
@@ -234,14 +229,13 @@ void CPU::do_EX() {
 
     ex_memwb.alu_result = aluOut.value;
     
-    // If this turns out to be an ST instruction, the value we want to write into RAM is sitting in rd
+    // If store instruction, the value we want to write into RAM is sitting in rd
     ex_memwb.store_data = reg[id_ex.decoded.destinationRegister];
     
-    // Forward the control word so MEM_WB knows whether to write to RAM or registers
     ex_memwb.ctrl = id_ex.ctrl;
 }
 
-// STAGE 4 & 5: MEMORY ACCESS & WRITEBACK (MEM_WB)
+// STAGE 4: MEMORY ACCESS & WRITEBACK (MEM_WB)
 void CPU::do_MEM_WB() {
     if (!ex_memwb.active) {
         return;
@@ -252,13 +246,13 @@ void CPU::do_MEM_WB() {
     // 1. Memory Read (LD)
     if (ex_memwb.ctrl.memRead) {
         uint32_t memAddr = static_cast<uint32_t>(ex_memwb.alu_result);
-        if (memAddr > 65532) {
+        if (memAddr > 65532) { // 65536 bytes memory 
             throw SimException("Hardware Crash: Out-of-bounds memory access at " + std::to_string(memAddr));
         }
         if (memAddr % 4 != 0) {
             throw SimException("Hardware Crash: Misaligned memory access at " + std::to_string(memAddr));
         }
-
+        // little endian
         uint32_t loaded = 0;
         loaded |= dataMem[memAddr];
         loaded |= (dataMem[memAddr + 1] << 8);
@@ -284,7 +278,6 @@ void CPU::do_MEM_WB() {
         dataMem[memAddr + 3] = (dataToStore >> 24) & 0xFF;
     }
 
-    // 3. Register Writeback
     if (ex_memwb.ctrl.regWrite) {
         reg[ex_memwb.dest_reg] = writebackValue;
     }

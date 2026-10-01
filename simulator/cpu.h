@@ -6,31 +6,28 @@
 #include "alu.h"
 #include "isa.h"
 
-// ---------------------------------------------------------
+
 // HORIZONTAL MICROINSTRUCTION (The Control Word)
-// ---------------------------------------------------------
-enum class BranchControl : uint8_t { 
+enum class BranchControl : uint8_t {  // type of control flow
     NONE, 
-    COND_EQ,  // BEQ uses IsEqual flag
-    COND_GT,  // BGT uses IsGreaterThan flag
-    UNCOND,   // B
-    CALL,     // Save PC to r15, then jump
-    RET       // Jump to r15
+    COND_EQ,  
+    COND_GT,  
+    UNCOND,   
+    CALL,    
+    RET       
 };
 
 struct MicroInstruction {
-    bool regWrite;      // Write result back to the destination register?
-    bool memRead;       // Read data from memory into a register?
-    bool memWrite;      // Write data from a register into memory?
-    bool updateFlags;   // Update ProcessorFlags (IsEqual, IsGreaterThan)?
+    bool regWrite;      
+    bool memRead;       
+    bool memWrite;      
+    bool updateFlags;   
     
     BranchControl branchType;
     risc201::OperationCode aluOp; 
 };
 
-// ---------------------------------------------------------
-// PIPELINE LATCHES
-// ---------------------------------------------------------
+// PIPELINE LATCHES to store intermediate values at each stage
 struct IF_ID_Latch {
     bool active = false; 
     uint32_t pc = 0;
@@ -58,9 +55,7 @@ struct EX_MEMWB_Latch {
     MicroInstruction ctrl;               // Surviving control signals (regWrite, memRead, memWrite)
 };
 
-// ---------------------------------------------------------
 // PIPELINED CPU CLASS
-// ---------------------------------------------------------
 class CPU {
 public:
     std::vector<uint32_t> instrMem; // 4096 words (16 KB)
@@ -91,7 +86,7 @@ public:
     void tick(); 
     void stepInstruction();  // Wrapper that calls tick() to stay compatible with main.cpp
     
-    // Pipeline stages (executed MEM_WB -> EX -> ID -> IF to prevent overwriting)
+    // Pipeline stages 
     void do_MEM_WB();
     void do_EX();
     void do_ID();
