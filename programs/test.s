@@ -1,4 +1,4 @@
-mov r1, 5
+mov r1, 6
 mov r2, 0
 loop:
 add r2, r2, r1

@@ -2,6 +2,24 @@ CXX=g++
 FLAGS=-std=c++17 -Iisa -Ialu -Iassembler -Isimulator
 
 SIM=simulator/main.cpp simulator/cpu.cpp alu/ALU.cpp isa/ISA.cpp
+ASM=assembler/main.cpp assembler/assembler.cpp assembler/pass1.cpp assembler/pass2.cpp assembler/tokenizer.cpp isa/ISA.cpp
+
+all: sim asm_tool
 
 sim:
 	$(CXX) $(FLAGS) $(SIM) -o sim
+
+asm_tool: $(ASM)
+	$(CXX) $(FLAGS) $(ASM) -o asm_tool
+
+# Automatically assemble to binary, then convert to clean text .hex format
+programs/%.hex: programs/%.s asm_tool
+	./asm_tool programs/$*.s programs/$*.bin
+	python3 -c "import sys; \
+data = open(sys.argv[1], 'rb').read(); \
+words = [int.from_bytes(data[i:i+4], 'little') for i in range(0, len(data), 4)]; \
+open(sys.argv[2], 'w').write('\n'.join(f'0x{w:08x}' for w in words) + '\n')" programs/$*.bin programs/$*.hex
+	rm -f programs/$*.bin
+
+clean:
+	rm -f sim asm_tool programs/*.bin
