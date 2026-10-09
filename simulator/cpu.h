@@ -90,6 +90,9 @@ public:
     void checkWordAccess(uint32_t addr, uint32_t faultPc) const;
     uint32_t readWord(uint32_t addr, uint32_t faultPc) const;
     void writeWord(uint32_t addr, uint32_t value, uint32_t faultPc);
+    
+    // Stack safety checks (throw SimException when something is wrong)
+    void checkStackPointer(uint32_t newSP, uint32_t faultPc) const;
 
     // Pipeline stages 
     void do_MEM_WB();
