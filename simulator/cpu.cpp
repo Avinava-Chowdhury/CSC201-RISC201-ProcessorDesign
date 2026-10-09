@@ -235,6 +235,39 @@ void CPU::do_EX() {
     ex_memwb.ctrl = id_ex.ctrl;
 }
 
+// Data memory access helpers
+void CPU::checkWordAccess(uint32_t addr, uint32_t faultPc) const {
+    if (static_cast<uint64_t>(addr) + risc201::BYTES_PER_WORD > dataMem.size()) {
+        throw SimException(FaultType::OUT_OF_BOUNDS,
+                           "memory access outside the 64 KB data memory", faultPc)
+                  .withAddress(addr);
+    }
+    if (addr % risc201::BYTES_PER_WORD != 0) {
+        throw SimException(FaultType::MISALIGNED,
+                           "word access is not 4-byte aligned", faultPc)
+                  .withAddress(addr);
+    }
+}
+
+uint32_t CPU::readWord(uint32_t addr, uint32_t faultPc) const {
+    checkWordAccess(addr, faultPc);
+    // little endian
+    uint32_t value = 0;
+    value |= dataMem[addr];
+    value |= (static_cast<uint32_t>(dataMem[addr + 1]) << 8);
+    value |= (static_cast<uint32_t>(dataMem[addr + 2]) << 16);
+    value |= (static_cast<uint32_t>(dataMem[addr + 3]) << 24);
+    return value;
+}
+
+void CPU::writeWord(uint32_t addr, uint32_t value, uint32_t faultPc) {
+    checkWordAccess(addr, faultPc);
+    dataMem[addr]     = value & 0xFF;
+    dataMem[addr + 1] = (value >> 8) & 0xFF;
+    dataMem[addr + 2] = (value >> 16) & 0xFF;
+    dataMem[addr + 3] = (value >> 24) & 0xFF;
+}
+
 // STAGE 4: MEMORY ACCESS & WRITEBACK (MEM_WB)
 void CPU::do_MEM_WB() {
     if (!ex_memwb.active) {
@@ -242,40 +275,16 @@ void CPU::do_MEM_WB() {
     }
 
     int32_t writebackValue = ex_memwb.alu_result;
+    uint32_t memAddr = static_cast<uint32_t>(ex_memwb.alu_result);
 
     // 1. Memory Read (LD)
     if (ex_memwb.ctrl.memRead) {
-        uint32_t memAddr = static_cast<uint32_t>(ex_memwb.alu_result);
-        if (memAddr > 65532) { // 65536 bytes memory 
-            throw SimException("Hardware Crash: Out-of-bounds memory access at " + std::to_string(memAddr));
-        }
-        if (memAddr % 4 != 0) {
-            throw SimException("Hardware Crash: Misaligned memory access at " + std::to_string(memAddr));
-        }
-        // little endian
-        uint32_t loaded = 0;
-        loaded |= dataMem[memAddr];
-        loaded |= (dataMem[memAddr + 1] << 8);
-        loaded |= (dataMem[memAddr + 2] << 16);
-        loaded |= (dataMem[memAddr + 3] << 24);
-        writebackValue = static_cast<int32_t>(loaded);
+        writebackValue = static_cast<int32_t>(readWord(memAddr, ex_memwb.pc));
     }
 
     // 2. Memory Write (ST)
     if (ex_memwb.ctrl.memWrite) {
-        uint32_t memAddr = static_cast<uint32_t>(ex_memwb.alu_result);
-        if (memAddr > 65532) {
-            throw SimException("Hardware Crash: Out-of-bounds memory access at " + std::to_string(memAddr));
-        }
-        if (memAddr % 4 != 0) {
-            throw SimException("Hardware Crash: Misaligned memory access at " + std::to_string(memAddr));
-        }
-
-        uint32_t dataToStore = static_cast<uint32_t>(ex_memwb.store_data);
-        dataMem[memAddr]     = dataToStore & 0xFF;
-        dataMem[memAddr + 1] = (dataToStore >> 8) & 0xFF;
-        dataMem[memAddr + 2] = (dataToStore >> 16) & 0xFF;
-        dataMem[memAddr + 3] = (dataToStore >> 24) & 0xFF;
+        writeWord(memAddr, static_cast<uint32_t>(ex_memwb.store_data), ex_memwb.pc);
     }
 
     if (ex_memwb.ctrl.regWrite) {
