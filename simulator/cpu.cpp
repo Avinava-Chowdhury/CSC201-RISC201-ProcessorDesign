@@ -270,6 +270,30 @@ void CPU::writeWord(uint32_t addr, uint32_t value, uint32_t faultPc) {
     dataMem[addr + 3] = (value >> 24) & 0xFF;
 }
 
+// Stack pointer safeguard: sp must stay word aligned and inside [STACK_LOWEST_LIMIT, STACK_STARTING_ADDRESS]. 
+//The stack is full descending, so going under the floor is an overflow and going above the start is an underflow (popping more than was pushed).
+void CPU::checkStackPointer(uint32_t newSP, uint32_t faultPc) const {
+    if (newSP % risc201::BYTES_PER_WORD != 0) {
+        throw SimException(FaultType::MISALIGNED,
+                           "stack pointer must stay 4-byte aligned", faultPc)
+                  .withAddress(newSP);
+    }
+    if (newSP < risc201::STACK_LOWEST_LIMIT) {
+        throw SimException(FaultType::STACK_OVERFLOW,
+                           "stack grew past its 16 KB limit (floor is " +
+                               hex32(risc201::STACK_LOWEST_LIMIT) + ")",
+                           faultPc)
+                  .withAddress(newSP);
+    }
+    if (newSP > risc201::STACK_STARTING_ADDRESS) {
+        throw SimException(FaultType::STACK_UNDERFLOW,
+                           "stack pointer went above the empty-stack address (" +
+                               hex32(risc201::STACK_STARTING_ADDRESS) + "), more pops than pushes",
+                           faultPc)
+                  .withAddress(newSP);
+    }
+}
+
 // STAGE 4: MEMORY ACCESS & WRITEBACK (MEM_WB)
 void CPU::do_MEM_WB() {
     if (!ex_memwb.active) {
@@ -289,14 +313,13 @@ void CPU::do_MEM_WB() {
         writeWord(memAddr, static_cast<uint32_t>(ex_memwb.store_data), ex_memwb.pc);
     }
 
-    if (ex_memwb.ctrl.regWrite) {
+        if (ex_memwb.ctrl.regWrite) {
+        // look at the new sp BEFORE it lands in the register, so a faulting
+        // instruction never leaves sp pointing somewhere illegal
+        if (ex_memwb.dest_reg == risc201::STACK_POINTER_REG_INDEX) {
+            checkStackPointer(static_cast<uint32_t>(writebackValue), ex_memwb.pc);
+        }
         reg[ex_memwb.dest_reg] = writebackValue;
-    }
-
-    // Stack pointer hardware boundary safeguard
-    uint32_t currentSP = reg[risc201::STACK_POINTER_REG_INDEX];
-    if (currentSP < risc201::STACK_LOWEST_LIMIT || currentSP > risc201::STACK_STARTING_ADDRESS) {
-        throw SimException("Hardware Crash: Stack pointer out of bounds (Value: " + std::to_string(currentSP) + ")");
     }
 }
 
