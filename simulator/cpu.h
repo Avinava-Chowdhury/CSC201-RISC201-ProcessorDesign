@@ -65,6 +65,7 @@ public:
     int32_t reg[16]; 
     uint32_t pc; 
     risc201::ProcessorFlags flags;
+    bool faulted = false;   // set when a hardware fault stops the CPU
 
     // Pipeline Registers
     IF_ID_Latch if_id;
