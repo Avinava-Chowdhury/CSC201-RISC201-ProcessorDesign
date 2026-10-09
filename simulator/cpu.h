@@ -94,6 +94,8 @@ public:
     // Stack safety checks (throw SimException when something is wrong)
     void checkStackPointer(uint32_t newSP, uint32_t faultPc) const;
 
+    void checkStackWrite(uint32_t addr, uint32_t faultPc) const;
+
     // Pipeline stages 
     void do_MEM_WB();
     void do_EX();
