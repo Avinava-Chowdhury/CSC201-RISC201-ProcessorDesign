@@ -124,7 +124,9 @@ void CPU::do_ID() {
     // Decode bitfields (opcode, registers, constants)
     auto decodedOpt = risc201::convertFromBinary(if_id.instruction);
     if (!decodedOpt.has_value()) {
-        throw SimException("Hardware Crash: Invalid opcode detected at PC " + std::to_string(if_id.pc));
+                throw SimException(FaultType::INVALID_OPCODE,
+                           "undefined opcode in instruction word " + hex32(if_id.instruction),
+                           if_id.pc);
     }
     risc201::DecodedInstruction instr = decodedOpt.value();
 
