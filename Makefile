@@ -23,3 +23,7 @@ open(sys.argv[2], 'w').write('\n'.join(f'0x{w:08x}' for w in words) + '\n')" pro
 
 clean:
 	rm -f sim asm_tool programs/*.bin
+
+
+test: sim asm_tool
+	bash tests/stack_faults.sh
