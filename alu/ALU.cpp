@@ -430,7 +430,9 @@ case Opcode::ROR: {
     result.value = (int32_t)out;
     break;
 }
-       
+         default:
+            break;
+    }
 
     result.flags.zero = (result.value == 0);
     return result;
