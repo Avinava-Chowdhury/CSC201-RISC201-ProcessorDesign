@@ -6,10 +6,10 @@ ASM=assembler/main.cpp assembler/assembler.cpp assembler/pass1.cpp assembler/pas
 
 all: sim asm_tool
 
-sim:
+sim: $(SIM) $(wildcard simulator/*.h alu/*.h isa/*.h)
 	$(CXX) $(FLAGS) $(SIM) -o sim
 
-asm_tool: $(ASM)
+asm_tool: $(ASM) $(wildcard assembler/*.h isa/*.h)
 	$(CXX) $(FLAGS) $(ASM) -o asm_tool
 
 # Automatically assemble to binary, then convert to clean text .hex format
