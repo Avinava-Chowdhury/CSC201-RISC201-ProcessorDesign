@@ -21,7 +21,8 @@ void CPU::reset() {
     // Clear flags
     flags.IsEqual = false;
     flags.IsGreaterThan = false;
-
+    faulted = false;
+    
     // Flush/Clear pipeline latches
     if_id = IF_ID_Latch{};
     id_ex = ID_EX_Latch{};
@@ -341,12 +342,19 @@ void CPU::do_MEM_WB() {
 }
 
 // Clock Cycle Stepping in reverse 
-
 void CPU::tick() {
-    do_MEM_WB();
-    do_EX();
-    do_ID();
-    do_IF();
+    // a faulted CPU stays frozen until reset()
+    if (faulted) return;
+
+    try {
+        do_MEM_WB();
+        do_EX();
+        do_ID();
+        do_IF();
+    } catch (const SimException&) {
+        faulted = true;
+        throw;   // let the CLI print the report
+    }
 }
 
 void CPU::stepInstruction() {
