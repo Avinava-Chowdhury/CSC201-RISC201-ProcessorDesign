@@ -294,6 +294,21 @@ void CPU::checkStackPointer(uint32_t newSP, uint32_t faultPc) const {
     }
 }
 
+// Stores into the stack segment must not land below sp. 
+// Everything under sp is free space in a full descending stack, 
+// so a write there means a bad pointer or a skipped sp update and would corrupt later pushes.
+void CPU::checkStackWrite(uint32_t addr, uint32_t faultPc) const {
+    const uint32_t sp = static_cast<uint32_t>(reg[risc201::STACK_POINTER_REG_INDEX]);
+    const bool inStackSegment = addr >= risc201::STACK_LOWEST_LIMIT &&
+                                addr <  risc201::STACK_STARTING_ADDRESS;
+    if (inStackSegment && addr < sp) {
+        throw SimException(FaultType::STACK_CORRUPTION,
+                           "store below the stack pointer (sp = " + hex32(sp) + ")",
+                           faultPc)
+                  .withAddress(addr);
+    }
+}
+
 // STAGE 4: MEMORY ACCESS & WRITEBACK (MEM_WB)
 void CPU::do_MEM_WB() {
     if (!ex_memwb.active) {
@@ -310,6 +325,8 @@ void CPU::do_MEM_WB() {
 
     // 2. Memory Write (ST)
     if (ex_memwb.ctrl.memWrite) {
+        checkWordAccess(memAddr, ex_memwb.pc);   // alignment/bounds first
+        checkStackWrite(memAddr, ex_memwb.pc);
         writeWord(memAddr, static_cast<uint32_t>(ex_memwb.store_data), ex_memwb.pc);
     }
 
