@@ -16,7 +16,7 @@
 using namespace risc201;
 
 namespace
-{
+{//converts to hexadecimal
     std::string hex32(uint32_t v)
     {
         char buf[16];
@@ -24,7 +24,7 @@ namespace
         return buf;
     }
 
-    // "L_0010" for address 0x10
+    // "L_0010" for address 0x10 branch taregt address ko label mai convrt krta
     std::string labelFor(uint32_t address)
     {
         char buf[24];
@@ -55,7 +55,7 @@ namespace
 // ---------------------------------------------------------------------
 // Formatting helpers
 // ---------------------------------------------------------------------
-
+//Immediate value ko uske modifier ke according assembly syntax mein convert karta hai.
 std::string formatImmediate(uint16_t rawValue, ImmediateModifier modifier)
 {
     char buf[24];
@@ -73,7 +73,7 @@ std::string formatImmediate(uint16_t rawValue, ImmediateModifier modifier)
     }
     return buf;
 }
-
+//Ye one 32-bit machine-code word ko assembly instruction mein convert karta hai.
 std::string disassembleWord(uint32_t word, uint32_t address, const std::string& targetLabel)
 {
     const std::optional<DecodedInstruction> decoded = convertFromBinary(word);
