@@ -21,7 +21,8 @@ void CPU::reset() {
     // Clear flags
     flags.IsEqual = false;
     flags.IsGreaterThan = false;
-
+    faulted = false;
+    
     // Flush/Clear pipeline latches
     if_id = IF_ID_Latch{};
     id_ex = ID_EX_Latch{};
@@ -124,7 +125,9 @@ void CPU::do_ID() {
     // Decode bitfields (opcode, registers, constants)
     auto decodedOpt = risc201::convertFromBinary(if_id.instruction);
     if (!decodedOpt.has_value()) {
-        throw SimException("Hardware Crash: Invalid opcode detected at PC " + std::to_string(if_id.pc));
+                throw SimException(FaultType::INVALID_OPCODE,
+                           "undefined opcode in instruction word " + hex32(if_id.instruction),
+                           if_id.pc);
     }
     risc201::DecodedInstruction instr = decodedOpt.value();
 
@@ -235,6 +238,78 @@ void CPU::do_EX() {
     ex_memwb.ctrl = id_ex.ctrl;
 }
 
+// Data memory access helpers
+void CPU::checkWordAccess(uint32_t addr, uint32_t faultPc) const {
+    if (static_cast<uint64_t>(addr) + risc201::BYTES_PER_WORD > dataMem.size()) {
+        throw SimException(FaultType::OUT_OF_BOUNDS,
+                           "memory access outside the 64 KB data memory", faultPc)
+                  .withAddress(addr);
+    }
+    if (addr % risc201::BYTES_PER_WORD != 0) {
+        throw SimException(FaultType::MISALIGNED,
+                           "word access is not 4-byte aligned", faultPc)
+                  .withAddress(addr);
+    }
+}
+
+uint32_t CPU::readWord(uint32_t addr, uint32_t faultPc) const {
+    checkWordAccess(addr, faultPc);
+    // little endian
+    uint32_t value = 0;
+    value |= dataMem[addr];
+    value |= (static_cast<uint32_t>(dataMem[addr + 1]) << 8);
+    value |= (static_cast<uint32_t>(dataMem[addr + 2]) << 16);
+    value |= (static_cast<uint32_t>(dataMem[addr + 3]) << 24);
+    return value;
+}
+
+void CPU::writeWord(uint32_t addr, uint32_t value, uint32_t faultPc) {
+    checkWordAccess(addr, faultPc);
+    dataMem[addr]     = value & 0xFF;
+    dataMem[addr + 1] = (value >> 8) & 0xFF;
+    dataMem[addr + 2] = (value >> 16) & 0xFF;
+    dataMem[addr + 3] = (value >> 24) & 0xFF;
+}
+
+// Stack pointer safeguard: sp must stay word aligned and inside [STACK_LOWEST_LIMIT, STACK_STARTING_ADDRESS]. 
+//The stack is full descending, so going under the floor is an overflow and going above the start is an underflow (popping more than was pushed).
+void CPU::checkStackPointer(uint32_t newSP, uint32_t faultPc) const {
+    if (newSP % risc201::BYTES_PER_WORD != 0) {
+        throw SimException(FaultType::MISALIGNED,
+                           "stack pointer must stay 4-byte aligned", faultPc)
+                  .withAddress(newSP);
+    }
+    if (newSP < risc201::STACK_LOWEST_LIMIT) {
+        throw SimException(FaultType::STACK_OVERFLOW,
+                           "stack grew past its 16 KB limit (floor is " +
+                               hex32(risc201::STACK_LOWEST_LIMIT) + ")",
+                           faultPc)
+                  .withAddress(newSP);
+    }
+    if (newSP > risc201::STACK_STARTING_ADDRESS) {
+        throw SimException(FaultType::STACK_UNDERFLOW,
+                           "stack pointer went above the empty-stack address (" +
+                               hex32(risc201::STACK_STARTING_ADDRESS) + "), more pops than pushes",
+                           faultPc)
+                  .withAddress(newSP);
+    }
+}
+
+// Stores into the stack segment must not land below sp. 
+// Everything under sp is free space in a full descending stack, 
+// so a write there means a bad pointer or a skipped sp update and would corrupt later pushes.
+void CPU::checkStackWrite(uint32_t addr, uint32_t faultPc) const {
+    const uint32_t sp = static_cast<uint32_t>(reg[risc201::STACK_POINTER_REG_INDEX]);
+    const bool inStackSegment = addr >= risc201::STACK_LOWEST_LIMIT &&
+                                addr <  risc201::STACK_STARTING_ADDRESS;
+    if (inStackSegment && addr < sp) {
+        throw SimException(FaultType::STACK_CORRUPTION,
+                           "store below the stack pointer (sp = " + hex32(sp) + ")",
+                           faultPc)
+                  .withAddress(addr);
+    }
+}
+
 // STAGE 4: MEMORY ACCESS & WRITEBACK (MEM_WB)
 void CPU::do_MEM_WB() {
     if (!ex_memwb.active) {
@@ -242,60 +317,44 @@ void CPU::do_MEM_WB() {
     }
 
     int32_t writebackValue = ex_memwb.alu_result;
+    uint32_t memAddr = static_cast<uint32_t>(ex_memwb.alu_result);
 
     // 1. Memory Read (LD)
     if (ex_memwb.ctrl.memRead) {
-        uint32_t memAddr = static_cast<uint32_t>(ex_memwb.alu_result);
-        if (memAddr > 65532) { // 65536 bytes memory 
-            throw SimException("Hardware Crash: Out-of-bounds memory access at " + std::to_string(memAddr));
-        }
-        if (memAddr % 4 != 0) {
-            throw SimException("Hardware Crash: Misaligned memory access at " + std::to_string(memAddr));
-        }
-        // little endian
-        uint32_t loaded = 0;
-        loaded |= dataMem[memAddr];
-        loaded |= (dataMem[memAddr + 1] << 8);
-        loaded |= (dataMem[memAddr + 2] << 16);
-        loaded |= (dataMem[memAddr + 3] << 24);
-        writebackValue = static_cast<int32_t>(loaded);
+        writebackValue = static_cast<int32_t>(readWord(memAddr, ex_memwb.pc));
     }
 
     // 2. Memory Write (ST)
     if (ex_memwb.ctrl.memWrite) {
-        uint32_t memAddr = static_cast<uint32_t>(ex_memwb.alu_result);
-        if (memAddr > 65532) {
-            throw SimException("Hardware Crash: Out-of-bounds memory access at " + std::to_string(memAddr));
-        }
-        if (memAddr % 4 != 0) {
-            throw SimException("Hardware Crash: Misaligned memory access at " + std::to_string(memAddr));
-        }
-
-        uint32_t dataToStore = static_cast<uint32_t>(ex_memwb.store_data);
-        dataMem[memAddr]     = dataToStore & 0xFF;
-        dataMem[memAddr + 1] = (dataToStore >> 8) & 0xFF;
-        dataMem[memAddr + 2] = (dataToStore >> 16) & 0xFF;
-        dataMem[memAddr + 3] = (dataToStore >> 24) & 0xFF;
+        checkWordAccess(memAddr, ex_memwb.pc);   // alignment/bounds first
+        checkStackWrite(memAddr, ex_memwb.pc);
+        writeWord(memAddr, static_cast<uint32_t>(ex_memwb.store_data), ex_memwb.pc);
     }
 
-    if (ex_memwb.ctrl.regWrite) {
+        if (ex_memwb.ctrl.regWrite) {
+        // look at the new sp BEFORE it lands in the register, so a faulting
+        // instruction never leaves sp pointing somewhere illegal
+        if (ex_memwb.dest_reg == risc201::STACK_POINTER_REG_INDEX) {
+            checkStackPointer(static_cast<uint32_t>(writebackValue), ex_memwb.pc);
+        }
         reg[ex_memwb.dest_reg] = writebackValue;
-    }
-
-    // Stack pointer hardware boundary safeguard
-    uint32_t currentSP = reg[risc201::STACK_POINTER_REG_INDEX];
-    if (currentSP < risc201::STACK_LOWEST_LIMIT || currentSP > risc201::STACK_STARTING_ADDRESS) {
-        throw SimException("Hardware Crash: Stack pointer out of bounds (Value: " + std::to_string(currentSP) + ")");
     }
 }
 
 // Clock Cycle Stepping in reverse 
-
 void CPU::tick() {
-    do_MEM_WB();
-    do_EX();
-    do_ID();
-    do_IF();
+    // a faulted CPU stays frozen until reset()
+    if (faulted) return;
+
+    try {
+        do_MEM_WB();
+        do_EX();
+        do_ID();
+        do_IF();
+    } catch (const SimException&) {
+        faulted = true;
+        throw;   // let the CLI print the report
+    }
 }
 
 void CPU::stepInstruction() {

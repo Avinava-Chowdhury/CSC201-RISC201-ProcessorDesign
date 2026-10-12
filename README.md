@@ -38,3 +38,33 @@ A struct representing the hidden architectural flags set exclusively by the `CMP
 
 ## 6. Pipeline Hazard Classification Helpers
 A suite of boolean functions (e.g., `isMemoryLoad`, `isConditionalBranch`, `modifiesDestinationRegister`) that accept an `OperationCode` or `DecodedInstruction`. These are strictly used by the CPU control unit to detect pipeline hazards (like trying to read a register before a previous instruction has finished writing to it) and coordinate clock cycles across the 4-stage and 6-stage architectures.
+
+# Stack safety and runtime faults
+
+The stack is full descending: it starts at `0x10000` (empty) and grows down towards `0xC000`, which gives 16 KB. `sp` is r14. `push` and `pop` are assembler macros that expand into `sub`/`st` and `ld`/`add` on `sp`.
+
+The simulator checks the stack while the program runs. When a check fails it throws a `SimException` with a fault type, the PC of the instruction that caused it, and the bad address. The CPU then halts until `reset`.
+
+| Fault | When it happens |
+|---|---|
+| `STACK_OVERFLOW` | `sp` is about to go below `0xC000` |
+| `STACK_UNDERFLOW` | `sp` is about to go above `0x10000` (more pops than pushes) |
+| `MISALIGNED` | `sp`, or any word load/store address, is not a multiple of 4 |
+| `STACK_CORRUPTION` | a store lands in the stack segment but below `sp` (the free part of the stack) |
+| `OUT_OF_BOUNDS` | a load/store goes outside the 64 KB data memory |
+| `INVALID_OPCODE` | the decoder meets an opcode that doesn't exist |
+
+The new `sp` value is checked before it is written back, so a faulting instruction never leaves `sp` pointing at an illegal address.
+
+Example from the CLI:
+
+```
+(sim) > step 40
+*** HARDWARE FAULT: STACK_OVERFLOW ***
+  reason  : stack grew past its 16 KB limit (floor is 0x0000c000)
+  at PC   : 0x0000000c
+  address : 0x0000bffc
+CPU halted. Type 'reset' to start over.
+```
+
+Run the stack tests with `make test`. The programs are in `tests/stack/`.

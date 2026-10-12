@@ -44,6 +44,10 @@ int main() {
             std::cout << "CPU reset to initial state.\n";
         } 
         else if (command == "step") {
+            if (cpu.faulted) {
+                std::cout << "CPU is halted by a fault. Type 'reset' to start over.\n";
+                continue;
+            }
             int steps = 1;
             std::string arg;
             if (ss >> arg) {
@@ -56,8 +60,9 @@ int main() {
                 }
                 std::cout << "Stepped " << steps << " instruction(s). PC is now 0x" 
                           << std::hex << cpu.pc << std::dec << "\n";
-            } catch (const SimException& e) {
-                std::cout << "\n" << e.what() << "\n";
+                } catch (const SimException& e) {
+                std::cout << "\n" << e.report() << "\n";
+                std::cout << "CPU halted. Type 'reset' to start over.\n";
             }
         } 
         else if (command == "regs") {
@@ -71,6 +76,9 @@ int main() {
                 if ((i + 1) % 4 == 0) std::cout << "\n";
             }
             std::cout << "Flags -> E: " << cpu.flags.IsEqual << " | GT: " << cpu.flags.IsGreaterThan << "\n";
+            if (cpu.faulted) {
+                std::cout << "Status: HALTED (fault)\n";
+            }
         } 
         else if (command == "help") {
             std::cout << "Commands:\n"

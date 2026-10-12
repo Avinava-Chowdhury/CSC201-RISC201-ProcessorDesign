@@ -417,6 +417,7 @@ ALUResult ALU::computeShift(Opcode op, int32_t a, int32_t b) {
             break;
     }
 
+
     result.flags.zero = (result.value == 0);
     return result;
 }

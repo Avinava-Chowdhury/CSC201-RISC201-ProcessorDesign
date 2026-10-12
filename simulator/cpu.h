@@ -5,7 +5,7 @@
 #include <cstdint>
 #include "alu.h"
 #include "isa.h"
-
+#include "sim_exception.h"
 
 // HORIZONTAL MICROINSTRUCTION (The Control Word)
 enum class BranchControl : uint8_t {  // type of control flow
@@ -65,6 +65,7 @@ public:
     int32_t reg[16]; 
     uint32_t pc; 
     risc201::ProcessorFlags flags;
+    bool faulted = false;   // set when a hardware fault stops the CPU
 
     // Pipeline Registers
     IF_ID_Latch if_id;
@@ -85,7 +86,17 @@ public:
     
     void tick(); 
     void stepInstruction();  // Wrapper that calls tick() to stay compatible with main.cpp
+
+    // Checked data memory access (throws SimException on a bad address)
+    void checkWordAccess(uint32_t addr, uint32_t faultPc) const;
+    uint32_t readWord(uint32_t addr, uint32_t faultPc) const;
+    void writeWord(uint32_t addr, uint32_t value, uint32_t faultPc);
     
+    // Stack safety checks (throw SimException when something is wrong)
+    void checkStackPointer(uint32_t newSP, uint32_t faultPc) const;
+
+    void checkStackWrite(uint32_t addr, uint32_t faultPc) const;
+
     // Pipeline stages 
     void do_MEM_WB();
     void do_EX();
