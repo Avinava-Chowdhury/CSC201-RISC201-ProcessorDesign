@@ -38,6 +38,11 @@ void testArithmetic() {
     assertTest("MUL: 5 * -4", my_alu.execute(Opcode::MUL, 5, -4), -20, false, false, false);
     assertTest("DIV by Zero", my_alu.execute(Opcode::DIV, 10, 0), 0, true, false, true); 
     assertTest("DIV Overflow: INT_MIN / -1", my_alu.execute(Opcode::DIV, INT32_MIN, -1), INT32_MIN, false, false, true);
+    assertTest("MOD: 10 % 3", my_alu.execute(Opcode::MOD, 10, 3), 1, false, false, false);
+    assertTest("MOD: -10 % 3", my_alu.execute(Opcode::MOD, -10, 3), -1, false, false, false);
+    assertTest("MIN: 10 vs 3", my_alu.execute(Opcode::MIN, 10, 3), 3, false, false, false);
+    assertTest("MAX: 10 vs 3", my_alu.execute(Opcode::MAX, 10, 3), 10, false, false, false);
+    assertTest("MOD Overflow: INT_MIN % -1", my_alu.execute(Opcode::MOD, INT32_MIN, -1), 0, true, false, true);
 }
 
 void testLogical() {
