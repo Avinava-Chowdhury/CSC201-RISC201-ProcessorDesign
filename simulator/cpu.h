@@ -55,6 +55,14 @@ struct EX_MEMWB_Latch {
     MicroInstruction ctrl;               // Surviving control signals (regWrite, memRead, memWrite)
 };
 
+// 6-Stage Pipeline Latches
+struct ID_RR_Latch {
+    bool active = false;
+    uint32_t pc = 0;
+    risc201::DecodedInstruction decoded;
+    MicroInstruction ctrl;
+};
+
 enum class PipelineMode {
     STAGE_4,
     STAGE_6
