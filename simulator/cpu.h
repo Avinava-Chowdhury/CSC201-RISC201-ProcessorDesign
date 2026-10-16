@@ -110,6 +110,12 @@ public:
     IF_ID_Latch if_id;
     ID_EX_Latch id_ex;
     EX_MEMWB_Latch ex_memwb;
+
+    // 6-Stage Pipeline Registers
+    ID_RR_Latch id_rr;
+    RR_EX_Latch rr_ex;
+    EX_MEM_Latch ex_mem;
+    MEM_WB_Latch_6 mem_wb_6;
     
     // Microprogrammed Control Store
     static constexpr size_t CONTROL_STORE_SIZE = 64; 
