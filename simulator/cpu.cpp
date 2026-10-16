@@ -323,6 +323,11 @@ void CPU::do_EX_6() {
     // Step 1: Execute the ALU operation
     risc201::ALUResult aluOut = alu.execute(rr_ex.ctrl.aluOp, rr_ex.val1, rr_ex.val2);
 
+    // Step 2: Conditional Flag Updates 
+    if (rr_ex.ctrl.updateFlags) {
+        flags.IsEqual = (rr_ex.val1 == rr_ex.val2);
+        flags.IsGreaterThan = (rr_ex.val1 > rr_ex.val2);
+    }
     // Initial output packaging for downstream stages
     ex_mem.active = true;
     ex_mem.pc = rr_ex.pc;
