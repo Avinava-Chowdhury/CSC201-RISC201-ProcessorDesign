@@ -286,6 +286,34 @@ void CPU::do_ID_6() {
     id_rr.ctrl = (opIdx < CONTROL_STORE_SIZE) ? controlStore[opIdx] : controlStore[0];
 }
 
+void CPU::do_RR_6() {
+    if (!id_rr.active) {
+        rr_ex.active = false;
+        return;
+    }
+
+    rr_ex.active = true;
+    rr_ex.pc = id_rr.pc;
+    rr_ex.decoded = id_rr.decoded;
+    rr_ex.ctrl = id_rr.ctrl;
+
+    int32_t op1 = 0;
+    int32_t op2 = 0;
+
+    if (id_rr.decoded.operation == risc201::OperationCode::MOV || 
+        id_rr.decoded.operation == risc201::OperationCode::NOT ||
+        id_rr.decoded.operation == risc201::OperationCode::NEG ||
+        id_rr.decoded.operation == risc201::OperationCode::ABS) {
+        op1 = id_rr.decoded.usesConstantNumber ? id_rr.decoded.calculateFinalConstantValue() : reg[id_rr.decoded.sourceRegister1];
+    } else {
+        op1 = reg[id_rr.decoded.sourceRegister1];
+        op2 = id_rr.decoded.usesConstantNumber ? id_rr.decoded.calculateFinalConstantValue() : reg[id_rr.decoded.sourceRegister2];
+    }
+
+    rr_ex.val1 = op1;
+    rr_ex.val2 = op2;
+}
+
 uint32_t CPU::readWord(uint32_t addr, uint32_t faultPc) const {
     checkWordAccess(addr, faultPc);
     // little endian
