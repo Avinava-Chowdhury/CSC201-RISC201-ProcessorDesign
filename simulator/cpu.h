@@ -152,4 +152,6 @@ public:
     void do_EX();
     void do_ID();
     void do_IF();
+    // 6-Stage Pipeline Stages
+    void do_ID_6();
 };
