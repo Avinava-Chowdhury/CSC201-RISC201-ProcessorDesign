@@ -72,6 +72,15 @@ struct RR_EX_Latch {
     MicroInstruction ctrl;
 };
 
+struct EX_MEM_Latch {
+    bool active = false;
+    uint32_t pc = 0;
+    uint8_t dest_reg = 0;
+    int32_t alu_result = 0;
+    int32_t store_data = 0;
+    MicroInstruction ctrl;
+};
+
 enum class PipelineMode {
     STAGE_4,
     STAGE_6
