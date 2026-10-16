@@ -484,7 +484,10 @@ void CPU::do_MEM_6() {
 
     int32_t writebackValue = ex_mem.alu_result;
     uint32_t memAddr = static_cast<uint32_t>(ex_mem.alu_result);
-
+    // Step 2: Memory Read (LD) handling
+    if (ex_mem.ctrl.memRead) {
+        writebackValue = static_cast<int32_t>(readWord(memAddr, ex_mem.pc));
+    }
     // Initial output packaging for downstream writeback stage
     mem_wb_6.active = true;
     mem_wb_6.pc = ex_mem.pc;
