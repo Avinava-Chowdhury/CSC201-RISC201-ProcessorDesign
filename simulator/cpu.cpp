@@ -350,6 +350,7 @@ void CPU::tick() {
     if (faulted) return;
 
     try {
+        totalCycles++; // 1 clock tick = 1 cycle
         do_MEM_WB();
         do_EX();
         do_ID();
