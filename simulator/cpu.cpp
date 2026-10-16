@@ -502,6 +502,15 @@ void CPU::do_MEM_6() {
     mem_wb_6.ctrl = ex_mem.ctrl;
 }
 
+void CPU::do_WB_6() {
+    if (!mem_wb_6.active) {
+        return;
+    }
+    
+    // Step 1: Instruction Retirement Counter
+    instructionsRetired++;
+}
+
 // Clock Cycle Stepping in reverse 
 void CPU::tick() {
     // a faulted CPU stays frozen until reset()
