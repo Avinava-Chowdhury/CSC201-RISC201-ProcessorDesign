@@ -36,7 +36,7 @@ void CPU::reset() {
     rr_ex = RR_EX_Latch{};
     ex_mem = EX_MEM_Latch{};
     mem_wb_6 = MEM_WB_Latch_6{};
-    
+
     // Program the horizontal control ROM
     loadControlStore();
 }
@@ -167,6 +167,7 @@ void CPU::do_ID() {
     id_ex.ctrl = ctrlWord; // Carry the control word forward to EX stage
 }
 
+
 // STAGE 3: EXECUTE
 
 void CPU::do_EX() {
@@ -260,6 +261,29 @@ void CPU::checkWordAccess(uint32_t addr, uint32_t faultPc) const {
                            "word access is not 4-byte aligned", faultPc)
                   .withAddress(addr);
     }
+}
+
+void CPU::do_ID_6() {
+    if (!if_id.active) {
+        id_rr.active = false;
+        return;
+    }
+
+    id_rr.active = true;
+    id_rr.pc = if_id.pc;
+    
+    // Parse instruction bitfields
+    auto decodedOpt = risc201::convertFromBinary(if_id.instruction);
+    if (!decodedOpt.has_value()) {
+        throw SimException(FaultType::INVALID_OPCODE,
+                           "undefined opcode in instruction word " + hex32(if_id.instruction),
+                           if_id.pc);
+    }
+    id_rr.decoded = decodedOpt.value();
+    
+    // Look up control word from Control Store ROM array
+    size_t opIdx = static_cast<size_t>(id_rr.decoded.operation);
+    id_rr.ctrl = (opIdx < CONTROL_STORE_SIZE) ? controlStore[opIdx] : controlStore[0];
 }
 
 uint32_t CPU::readWord(uint32_t addr, uint32_t faultPc) const {
