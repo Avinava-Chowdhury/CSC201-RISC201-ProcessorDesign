@@ -63,6 +63,15 @@ struct ID_RR_Latch {
     MicroInstruction ctrl;
 };
 
+struct RR_EX_Latch {
+    bool active = false;
+    uint32_t pc = 0;
+    risc201::DecodedInstruction decoded;
+    int32_t val1 = 0;
+    int32_t val2 = 0;
+    MicroInstruction ctrl;
+};
+
 enum class PipelineMode {
     STAGE_4,
     STAGE_6
