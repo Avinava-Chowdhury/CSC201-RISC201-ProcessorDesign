@@ -31,6 +31,12 @@ void CPU::reset() {
     id_ex = ID_EX_Latch{};
     ex_memwb = EX_MEMWB_Latch{};
 
+    // Flush/Clear 6-stage pipeline latches
+    id_rr = ID_RR_Latch{};
+    rr_ex = RR_EX_Latch{};
+    ex_mem = EX_MEM_Latch{};
+    mem_wb_6 = MEM_WB_Latch_6{};
+    
     // Program the horizontal control ROM
     loadControlStore();
 }
