@@ -83,6 +83,11 @@ public:
     
     risc201::ALU alu; // Isolated ALU class
 
+    PipelineMode mode = PipelineMode::STAGE_4;
+    uint64_t totalCycles = 0;
+    uint64_t instructionsRetired = 0;
+    uint64_t branchFlushes = 0;
+
     CPU(); 
 
     void reset();
