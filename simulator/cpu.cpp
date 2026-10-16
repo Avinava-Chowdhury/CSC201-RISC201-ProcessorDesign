@@ -509,6 +509,14 @@ void CPU::do_WB_6() {
     
     // Step 1: Instruction Retirement Counter
     instructionsRetired++;
+    // Step 2: Register File Writeback & Stack Pointer Safeguards
+    if (mem_wb_6.ctrl.regWrite) {
+        int32_t finalVal = mem_wb_6.final_value;
+        if (mem_wb_6.dest_reg == risc201::STACK_POINTER_REG_INDEX) {
+            checkStackPointer(static_cast<uint32_t>(finalVal), mem_wb_6.pc);
+        }
+        reg[mem_wb_6.dest_reg] = finalVal;
+    }
 }
 
 // Clock Cycle Stepping in reverse 
