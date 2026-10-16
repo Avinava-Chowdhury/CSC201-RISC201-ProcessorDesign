@@ -366,11 +366,24 @@ void CPU::do_EX_6() {
             targetPC = static_cast<uint32_t>(reg[risc201::RETURN_ADDRESS_REG_INDEX]);
             break;
     }
-    
-    // Initial output packaging for downstream stages
+
+    // Step 4: Handle branch redirection, flushes, and final latch packaging
+    if (takeBranch) {
+        pc = targetPC;
+        if_id.active = false;
+        id_rr.active = false;
+        branchFlushes++;
+    }
+
     ex_mem.active = true;
     ex_mem.pc = rr_ex.pc;
+    
+    ex_mem.dest_reg = (rr_ex.ctrl.branchType == BranchControl::CALL)
+                        ? static_cast<uint8_t>(risc201::RETURN_ADDRESS_REG_INDEX)
+                        : rr_ex.decoded.destinationRegister;
+
     ex_mem.alu_result = aluOut.value;
+    ex_mem.store_data = reg[rr_ex.decoded.destinationRegister];
     ex_mem.ctrl = rr_ex.ctrl;
 }
 
