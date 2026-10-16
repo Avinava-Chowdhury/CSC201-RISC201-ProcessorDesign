@@ -526,10 +526,22 @@ void CPU::tick() {
 
     try {
         totalCycles++; // 1 clock tick = 1 cycle
-        do_MEM_WB();
-        do_EX();
-        do_ID();
-        do_IF();
+
+        if (mode == PipelineMode::STAGE_6) {
+            // Reverse-order stage evaluation for 6-stage pipeline
+            do_WB_6();
+            do_MEM_6();
+            do_EX_6();
+            do_RR_6();
+            do_ID_6();
+            do_IF();
+        } else {
+            // Existing 4-stage pipeline execution path
+            do_MEM_WB();
+            do_EX();
+            do_ID();
+            do_IF();
+        }
     } catch (const SimException&) {
         faulted = true;
         throw;   // let the CLI print the report
