@@ -81,6 +81,14 @@ struct EX_MEM_Latch {
     MicroInstruction ctrl;
 };
 
+struct MEM_WB_Latch_6 {
+    bool active = false;
+    uint32_t pc = 0;
+    uint8_t dest_reg = 0;
+    int32_t final_value = 0;
+    MicroInstruction ctrl;
+};
+
 enum class PipelineMode {
     STAGE_4,
     STAGE_6
