@@ -488,6 +488,12 @@ void CPU::do_MEM_6() {
     if (ex_mem.ctrl.memRead) {
         writebackValue = static_cast<int32_t>(readWord(memAddr, ex_mem.pc));
     }
+    // Step 3: Memory Write (ST) handling with safety checks
+    if (ex_mem.ctrl.memWrite) {
+        checkWordAccess(memAddr, ex_mem.pc);
+        checkStackWrite(memAddr, ex_mem.pc);
+        writeWord(memAddr, static_cast<uint32_t>(ex_mem.store_data), ex_mem.pc);
+    }
     // Initial output packaging for downstream writeback stage
     mem_wb_6.active = true;
     mem_wb_6.pc = ex_mem.pc;
