@@ -328,6 +328,45 @@ void CPU::do_EX_6() {
         flags.IsEqual = (rr_ex.val1 == rr_ex.val2);
         flags.IsGreaterThan = (rr_ex.val1 > rr_ex.val2);
     }
+    // Step 3: Branch Target and Condition Evaluation
+    bool takeBranch = false;
+    uint32_t targetPC = 0;
+
+    switch (rr_ex.ctrl.branchType) {
+        case BranchControl::NONE:
+            break;
+            
+        case BranchControl::COND_EQ:
+            if (flags.IsEqual) {
+                takeBranch = true;
+                targetPC = rr_ex.pc + rr_ex.decoded.branchJumpDistance;
+            }
+            break;
+            
+        case BranchControl::COND_GT:
+            if (flags.IsGreaterThan) {
+                takeBranch = true;
+                targetPC = rr_ex.pc + rr_ex.decoded.branchJumpDistance;
+            }
+            break;
+            
+        case BranchControl::UNCOND:
+            takeBranch = true;
+            targetPC = rr_ex.pc + rr_ex.decoded.branchJumpDistance;
+            break;
+            
+        case BranchControl::CALL:
+            takeBranch = true;
+            targetPC = rr_ex.pc + rr_ex.decoded.branchJumpDistance;
+            aluOut.value = rr_ex.pc + risc201::BYTES_PER_WORD;
+            break;
+            
+        case BranchControl::RET:
+            takeBranch = true;
+            targetPC = static_cast<uint32_t>(reg[risc201::RETURN_ADDRESS_REG_INDEX]);
+            break;
+    }
+    
     // Initial output packaging for downstream stages
     ex_mem.active = true;
     ex_mem.pc = rr_ex.pc;
