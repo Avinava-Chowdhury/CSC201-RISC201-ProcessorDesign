@@ -222,6 +222,7 @@ void CPU::do_EX() {
     if (takeBranch) {
         pc = targetPC;
         if_id.active = false;
+        branchFlushes++; // 1 stage (IF) was flushed
     }
 
     // output latch
