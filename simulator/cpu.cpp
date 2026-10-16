@@ -318,7 +318,7 @@ void CPU::do_MEM_WB() {
     if (!ex_memwb.active) {
         return;
     }
-
+    instructionsRetired++;
     int32_t writebackValue = ex_memwb.alu_result;
     uint32_t memAddr = static_cast<uint32_t>(ex_memwb.alu_result);
 
