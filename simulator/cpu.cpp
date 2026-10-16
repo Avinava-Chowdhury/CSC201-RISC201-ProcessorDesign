@@ -314,6 +314,22 @@ void CPU::do_RR_6() {
     rr_ex.val2 = op2;
 }
 
+void CPU::do_EX_6() {
+    if (!rr_ex.active) {
+        ex_mem.active = false;
+        return;
+    }
+
+    // Step 1: Execute the ALU operation
+    risc201::ALUResult aluOut = alu.execute(rr_ex.ctrl.aluOp, rr_ex.val1, rr_ex.val2);
+
+    // Initial output packaging for downstream stages
+    ex_mem.active = true;
+    ex_mem.pc = rr_ex.pc;
+    ex_mem.alu_result = aluOut.value;
+    ex_mem.ctrl = rr_ex.ctrl;
+}
+
 uint32_t CPU::readWord(uint32_t addr, uint32_t faultPc) const {
     checkWordAccess(addr, faultPc);
     // little endian
