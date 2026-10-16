@@ -476,6 +476,23 @@ void CPU::do_MEM_WB() {
     }
 }
 
+void CPU::do_MEM_6() {
+    if (!ex_mem.active) {
+        mem_wb_6.active = false;
+        return;
+    }
+
+    int32_t writebackValue = ex_mem.alu_result;
+    uint32_t memAddr = static_cast<uint32_t>(ex_mem.alu_result);
+
+    // Initial output packaging for downstream writeback stage
+    mem_wb_6.active = true;
+    mem_wb_6.pc = ex_mem.pc;
+    mem_wb_6.dest_reg = ex_mem.dest_reg;
+    mem_wb_6.final_value = writebackValue;
+    mem_wb_6.ctrl = ex_mem.ctrl;
+}
+
 // Clock Cycle Stepping in reverse 
 void CPU::tick() {
     // a faulted CPU stays frozen until reset()
