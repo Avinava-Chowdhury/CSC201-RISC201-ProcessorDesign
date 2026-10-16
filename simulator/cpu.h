@@ -55,6 +55,11 @@ struct EX_MEMWB_Latch {
     MicroInstruction ctrl;               // Surviving control signals (regWrite, memRead, memWrite)
 };
 
+enum class PipelineMode {
+    STAGE_4,
+    STAGE_6
+};
+
 // PIPELINED CPU CLASS
 class CPU {
 public:
