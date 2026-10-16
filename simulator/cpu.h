@@ -157,4 +157,5 @@ public:
     void do_RR_6();
     void do_EX_6();
     void do_MEM_6();
+    void do_WB_6();
 };
