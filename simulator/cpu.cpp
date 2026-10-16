@@ -16,6 +16,9 @@ void CPU::reset() {
     }
     // sp (r14) starts at 0x10000 since stack grows downwards
     reg[risc201::STACK_POINTER_REG_INDEX] = risc201::STACK_STARTING_ADDRESS; 
+    totalCycles = 0;
+    instructionsRetired = 0;
+    branchFlushes = 0;
     pc = 0;
     
     // Clear flags
