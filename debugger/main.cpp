@@ -133,7 +133,13 @@ namespace
     void printStack(const CPU& cpu, int maxWords)
     {
         uint32_t sp = static_cast<uint32_t>(cpu.reg[STACK_POINTER_REG_INDEX]);
-        cout << "--- Stack (sp = " << hex32(sp) << ", base = " << hex32(STACK_STARTING_ADDRESS) << ") ---\n";
+        cout << "========== RISC201 STACK ==========\n";
+cout << "Stack base : " << hex32(STACK_STARTING_ADDRESS) << "\n";
+cout << "Stack limit: " << hex32(STACK_LOWEST_LIMIT) << "\n";
+cout << "SP         : " << hex32(sp) << "\n";
+cout << "-----------------------------------\n";
+cout << "Address      | Contents   | Status\n";
+cout << "-----------------------------------\n";
         if (sp >= STACK_STARTING_ADDRESS)
         {
             cout << "  (empty)\n";
@@ -146,8 +152,8 @@ namespace
             try
             {
                 uint32_t value = cpu.readWord(addr, cpu.pc);
-                cout << "  " << hex32(addr) << " | " << hex32(value) << " |"
-                     << (addr == sp ? "  <- sp\n" : "\n");
+               cout << "  " << hex32(addr) << " | " << hex32(value) << " | "
+     << (addr == sp ? "<- SP (TOP)" : "USED") << "\n";
             }
             catch (const SimException&)
             {
