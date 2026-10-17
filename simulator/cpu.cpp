@@ -572,16 +572,16 @@ void CPU::printStackMemory(std::ostream& out, int maxWords) const {
     }
 
     out << "\n========== RISC201 STACK ==========\n";
-    out << "PC         : " << risc201::hex32(pc) << '\n';
-    out << "microPC    : " << risc201::hex32(microPC) << '\n';
-    out << "SP         : " << risc201::hex32(sp) << '\n';
-    out << "Stack base : " << risc201::hex32(base) << '\n';
-    out << "Stack limit: " << risc201::hex32(limit) << '\n';
+    out << "PC         : " << hex32(pc) << '\n';
+    out << "microPC    : " << hex32(microPC) << '\n';
+    out << "SP         : " << hex32(sp) << '\n';
+    out << "Stack base : " << hex32(base) << '\n';
+    out << "Stack limit: " << hex32(limit) << '\n';
     out << "-----------------------------------\n";
     out << "Address      | Contents   | Status\n";
     out << "-----------------------------------\n";
 
-    if (sp == base && sp >= limit) { {
+    if (sp == base && sp >= limit) {
         out << "  Stack is empty.\n";
         out << "===================================\n";
         return;
@@ -602,12 +602,12 @@ void CPU::printStackMemory(std::ostream& out, int maxWords) const {
         try {
             uint32_t value = readWord(addr, pc);
 
-            out << "  " << risc201::hex32(addr)
-                << " | " << risc201::hex32(value)
+            out << "  " << hex32(addr)
+                << " | " << hex32(value)
                 << " | " << (addr == sp ? "<- SP (TOP)" : "USED")
                 << '\n';
         } catch (const SimException&) {
-            out << "  " << risc201::hex32(addr)
+            out << "  " << hex32(addr)
                 << " | <error>    | UNREADABLE\n";
         }
     }
