@@ -407,7 +407,7 @@ int main()
                 try { count = stoi(arg); }
                 catch (...) { count = 16; }
             }
-            printStack(cpu, count);
+            printStack(cpu, count > 0 ? count : 16);
         }
         else if (command == "help")
         {
