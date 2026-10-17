@@ -1,6 +1,11 @@
 #include "cpu.h"
 #include "sim_exception.h"
+
+#include <algorithm>
 #include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
 #include <string>
 
 // CPU Constructor & Reset
