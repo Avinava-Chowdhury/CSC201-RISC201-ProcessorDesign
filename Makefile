@@ -1,20 +1,17 @@
 CXX=g++
-FLAGS=-std=c++17 -Iisa -Ialu -Iassembler -Isimulator
+FLAGS=-std=c++17 -Iisa -Ialu -Iassembler -Isimulator -Idebugger
 
 SIM=simulator/main.cpp simulator/cpu.cpp alu/ALU.cpp isa/ISA.cpp
 ASM=assembler/main.cpp assembler/assembler.cpp assembler/pass1.cpp assembler/pass2.cpp assembler/tokenizer.cpp isa/ISA.cpp
-DBG=debugger/main.cpp simulator/cpu.cpp alu/ALU.cpp isa/ISA.cpp
 
-all: sim asm_tool debugger
+all: sim asm_tool
 
-sim: $(SIM) $(wildcard simulator/*.h alu/*.h isa/*.h)
+sim: $(SIM) $(wildcard simulator/*.h alu/*.h isa/*.h debugger/*.h)
 	$(CXX) $(FLAGS) $(SIM) -o sim
 
 asm_tool: $(ASM) $(wildcard assembler/*.h isa/*.h)
 	$(CXX) $(FLAGS) $(ASM) -o asm_tool
 
-debugger: $(DBG) $(wildcard simulator/*.h alu/*.h isa/*.h)
-	$(CXX) $(FLAGS) $(DBG) -o debugger
 # Automatically assemble to binary, then convert to clean text .hex format
 programs/%.hex: programs/%.s asm_tool
 	./asm_tool programs/$*.s programs/$*.bin
@@ -25,8 +22,7 @@ open(sys.argv[2], 'w').write('\n'.join(f'0x{w:08x}' for w in words) + '\n')" pro
 	rm -f programs/$*.bin
 
 clean:
-	rm -f sim asm_tool debugger programs/*.bin
-
+	rm -f sim asm_tool programs/*.bin
 
 test: sim asm_tool
 	bash tests/stack_faults.sh
