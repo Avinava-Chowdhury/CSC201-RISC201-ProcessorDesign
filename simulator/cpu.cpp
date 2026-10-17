@@ -572,6 +572,7 @@ void CPU::printStackMemory(std::ostream& out, int maxWords) const {
 
     out << "\n========== RISC201 STACK ==========\n";
     out << "PC         : " << risc201::hex32(pc) << '\n';
+    out << "microPC    : " << risc201::hex32(microPC) << '\n';
     out << "SP         : " << risc201::hex32(sp) << '\n';
     out << "Stack base : " << risc201::hex32(base) << '\n';
     out << "Stack limit: " << risc201::hex32(limit) << '\n';
