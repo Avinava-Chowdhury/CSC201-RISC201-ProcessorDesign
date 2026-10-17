@@ -1,95 +1,196 @@
 #include "cpu.h"
 #include "sim_exception.h"
-#include <iostream>
-#include <string>
-#include <sstream>
-#include <vector>
-#include <iomanip>
+#include "isa.h"
+#include "../debugger/debugger.h"
 
-int main() {
+#include <iostream>
+#include <set>
+#include <sstream>
+#include <string>
+
+using namespace std;
+using namespace risc201;
+using namespace debugger;
+
+int main()
+{
     CPU cpu;
     cpu.reset();
-    
-    std::cout << "RISC201 Functional Simulator\n";
-    std::cout << "Type 'help' for commands or 'quit' to exit.\n";
+    set<uint32_t> breakpoints;
 
-    std::string line;
-    while (true) {
-        std::cout << "\n(sim) > ";
-        if (!std::getline(std::cin, line)) break;
+    cout << "RISC201 Interactive Debugger\n";
+    cout << "Type 'help' for commands or 'quit' to exit.\n";
 
-        std::stringstream ss(line);
-        std::string command;
+    string line;
+    while (true)
+    {
+        cout << "\n(debug) > ";
+        if (!getline(cin, line)) break;
+
+        istringstream ss(line);
+        string command;
         ss >> command;
-
         if (command.empty()) continue;
 
-        if (command == "quit") {
+        if (command == "quit")
+        {
             break;
-        } 
-        else if (command == "load") {
-            std::string filename;
-            if (ss >> filename) {
-                if (cpu.loadHex(filename)) {
-                    std::cout << "Successfully loaded " << filename << "\n";
-                } else {
-                    std::cout << "Error: Could not open file " << filename << "\n";
-                }
-            } else {
-                std::cout << "Usage: load <file.hex>\n";
+        }
+        else if (command == "load")
+        {
+            string filename;
+            if (ss >> filename)
+            {
+                if (cpu.loadHex(filename)) cout << "Successfully loaded " << filename << "\n";
+                else cout << "Error: Could not open file " << filename << "\n";
             }
-        } 
-        else if (command == "reset") {
+            else
+            {
+                cout << "Usage: load <file.hex>\n";
+            }
+        }
+        else if (command == "reset")
+        {
             cpu.reset();
-            std::cout << "CPU reset to initial state.\n";
-        } 
-        else if (command == "step") {
-            if (cpu.faulted) {
-                std::cout << "CPU is halted by a fault. Type 'reset' to start over.\n";
+            breakpoints.clear();
+            cout << "CPU reset to initial state. Breakpoints cleared.\n";
+        }
+        else if (command == "step")
+        {
+            if (cpu.faulted)
+            {
+                cout << "CPU is halted by a fault. Type 'reset' to start over.\n";
                 continue;
             }
             int steps = 1;
-            std::string arg;
-            if (ss >> arg) {
-                steps = std::stoi(arg); // Handle optional [n] argument
+            string arg;
+            if (ss >> arg)
+            {
+                try { steps = stoi(arg); }
+                catch (...) { cout << "Usage: step [n]\n"; continue; }
             }
-            
-            try {
-                for (int i = 0; i < steps; i++) {
+
+            try
+            {
+                for (int i = 0; i < steps; i++)
+                {
+                    if (!breakpoints.empty() && i > 0 && breakpoints.count(cpu.pc))
+                    {
+                        cout << "Breakpoint hit at " << hex32(cpu.pc) << " before completing "
+                             << steps << " steps.\n";
+                        steps = i;
+                        break;
+                    }
                     cpu.stepInstruction();
                 }
-                std::cout << "Stepped " << steps << " instruction(s). PC is now 0x" 
-                          << std::hex << cpu.pc << std::dec << "\n";
-                } catch (const SimException& e) {
-                std::cout << "\n" << e.report() << "\n";
-                std::cout << "CPU halted. Type 'reset' to start over.\n";
+                cout << "Stepped " << steps << " instruction(s). PC is now " << hex32(cpu.pc) << "\n";
             }
-        } 
-        else if (command == "regs") {
-            std::cout << "--- Processor State ---\n";
-            std::cout << "PC: 0x" << std::hex << cpu.pc << std::dec << "\n";
-            for (int i = 0; i < 16; i++) {
-                
-                std::cout << "r" << std::left << std::setw(2) << i << ": 0x" 
-                          << std::right << std::hex << std::setfill('0') << std::setw(8) << static_cast<uint32_t>(cpu.reg[i]) 
-                          << std::dec << std::setfill(' ') << "\t";
-                if ((i + 1) % 4 == 0) std::cout << "\n";
+            catch (const SimException& e)
+            {
+                cout << "\n" << e.report() << "\n";
+                cout << "CPU halted. Type 'reset' to start over.\n";
             }
-            std::cout << "Flags -> E: " << cpu.flags.IsEqual << " | GT: " << cpu.flags.IsGreaterThan << "\n";
-            if (cpu.faulted) {
-                std::cout << "Status: HALTED (fault)\n";
+        }
+        else if (command == "continue")
+        {
+            doContinue(cpu, breakpoints);
+        }
+        else if (command == "break")
+        {
+            string arg;
+            if (ss >> arg)
+            {
+                if (arg == "list")
+                {
+                    if (breakpoints.empty())
+                    {
+                        cout << "No breakpoints set.\n";
+                    }
+                    else
+                    {
+                        cout << "Breakpoints:\n";
+                        for (uint32_t addr : breakpoints) cout << "  " << hex32(addr) << "\n";
+                    }
+                }
+                else
+                {
+                    uint32_t addr;
+                    if (parseAddress(arg, addr))
+                    {
+                        breakpoints.insert(addr);
+                        cout << "Breakpoint set at " << hex32(addr) << "\n";
+                    }
+                    else
+                    {
+                        cout << "Usage: break <addr> | break list\n";
+                    }
+                }
             }
-        } 
-        else if (command == "help") {
-            std::cout << "Commands:\n"
-                      << "  load <file.hex>  - Load program into memory\n"
-                      << "  step [n]         - Run n instructions (default 1)\n"
-                      << "  regs             - Show all 16 registers, PC, and flags\n"
-                      << "  reset            - Reset CPU state\n"
-                      << "  quit             - Exit simulator\n";
-        } 
-        else {
-            std::cout << "Unknown command: " << command << "\n";
+            else
+            {
+                cout << "Usage: break <addr> | break list\n";
+            }
+        }
+        else if (command == "delete")
+        {
+            string arg;
+            uint32_t addr;
+            if (ss >> arg && parseAddress(arg, addr))
+            {
+                if (breakpoints.erase(addr)) cout << "Removed breakpoint at " << hex32(addr) << "\n";
+                else cout << "No breakpoint at " << hex32(addr) << "\n";
+            }
+            else
+            {
+                cout << "Usage: delete <addr>\n";
+            }
+        }
+        else if (command == "next")
+        {
+            printNextInstruction(cpu);
+        }
+        else if (command == "regs")
+        {
+            printRegs(cpu);
+        }
+        else if (command == "mem")
+        {
+            string arg;
+            uint32_t addr;
+            if (ss >> arg && parseAddress(arg, addr))
+            {
+                int count = 8;
+                string countArg;
+                if (ss >> countArg)
+                {
+                    try { count = stoi(countArg); }
+                    catch (...) { count = 8; }
+                }
+                printMemory(cpu, addr, count);
+            }
+            else
+            {
+                cout << "Usage: mem <addr> [count]\n";
+            }
+        }
+        else if (command == "stack")
+        {
+            int count = 16;
+            string arg;
+            if (ss >> arg)
+            {
+                try { count = stoi(arg); }
+                catch (...) { count = 16; }
+            }
+            printStack(cpu, count);
+        }
+        else if (command == "help")
+        {
+            printHelp();
+        }
+        else
+        {
+            cout << "Unknown command: " << command << " (type 'help')\n";
         }
     }
 
