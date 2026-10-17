@@ -556,3 +556,63 @@ void CPU::tick() {
 void CPU::stepInstruction() {
     tick();
 }
+// ASCII Stack Memory Visualizer
+void CPU::printStackMemory(std::ostream& out, int maxWords) const {
+    const uint32_t sp =
+        static_cast<uint32_t>(reg[risc201::STACK_POINTER_REG_INDEX]);
+
+    const uint32_t base = risc201::STACK_STARTING_ADDRESS;
+    const uint32_t limit = risc201::STACK_LOWEST_LIMIT;
+
+    if (maxWords < 1) {
+        maxWords = 16;
+    }
+
+    out << "\n========== RISC201 STACK ==========\n";
+    out << "PC         : " << risc201::hex32(pc) << '\n';
+    out << "SP         : " << risc201::hex32(sp) << '\n';
+    out << "Stack base : " << risc201::hex32(base) << '\n';
+    out << "Stack limit: " << risc201::hex32(limit) << '\n';
+    out << "-----------------------------------\n";
+    out << "Address      | Contents   | Status\n";
+    out << "-----------------------------------\n";
+
+    if (sp == base) {
+        out << "  Stack is empty.\n";
+        out << "===================================\n";
+        return;
+    }
+
+    if (sp < limit || sp > base ||
+        sp % risc201::BYTES_PER_WORD != 0) {
+        out << "  Invalid stack pointer; cannot render frame.\n";
+        out << "===================================\n";
+        return;
+    }
+
+    int shown = 0;
+
+    for (uint32_t addr = sp;
+         addr < base && shown < maxWords;
+         addr += risc201::BYTES_PER_WORD, ++shown) {
+        try {
+            uint32_t value = readWord(addr, pc);
+
+            out << "  " << risc201::hex32(addr)
+                << " | " << risc201::hex32(value)
+                << " | " << (addr == sp ? "<- SP (TOP)" : "USED")
+                << '\n';
+        } catch (const SimException&) {
+            out << "  " << risc201::hex32(addr)
+                << " | <error>    | UNREADABLE\n";
+        }
+    }
+
+    if (shown == maxWords &&
+        static_cast<uint64_t>(sp) +
+            static_cast<uint64_t>(shown) * risc201::BYTES_PER_WORD < base) {
+        out << "  ... more stack words omitted\n";
+    }
+
+    out << "===================================\n";
+}
