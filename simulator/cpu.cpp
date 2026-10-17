@@ -581,7 +581,7 @@ void CPU::printStackMemory(std::ostream& out, int maxWords) const {
     out << "Address      | Contents   | Status\n";
     out << "-----------------------------------\n";
 
-    if (sp == base) {
+    if (sp == base && sp >= limit) { {
         out << "  Stack is empty.\n";
         out << "===================================\n";
         return;
