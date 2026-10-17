@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <cstdint>
+#include <iosfwd>
 #include "alu.h"
 #include "isa.h"
 #include "sim_exception.h"
@@ -144,6 +145,8 @@ public:
     
     // Stack safety checks (throw SimException when something is wrong)
     void checkStackPointer(uint32_t newSP, uint32_t faultPc) const;
+    // ASCII stack memory visualizer
+    void printStackMemory(std::ostream& out, int maxWords = 16) const;
 
     void checkStackWrite(uint32_t addr, uint32_t faultPc) const;
 
