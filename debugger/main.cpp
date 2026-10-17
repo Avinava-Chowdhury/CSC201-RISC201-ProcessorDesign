@@ -140,9 +140,14 @@ cout << "SP         : " << hex32(sp) << "\n";
 cout << "-----------------------------------\n";
 cout << "Address      | Contents   | Status\n";
 cout << "-----------------------------------\n";
-        if (sp >= STACK_STARTING_ADDRESS)
+               if (sp >= STACK_STARTING_ADDRESS)
         {
-            cout << "  (empty)\n";
+            cout << "  Stack is empty; no occupied entries.\n";
+            cout << "-----------------------------------\n";
+            cout << "  Next free slot: "
+                 << hex32(STACK_STARTING_ADDRESS - BYTES_PER_WORD)
+                 << " | -------- | FREE\n";
+            cout << "===================================\n";
             return;
         }
         uint32_t addr = STACK_STARTING_ADDRESS - BYTES_PER_WORD;
