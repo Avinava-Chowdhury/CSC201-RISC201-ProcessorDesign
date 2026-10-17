@@ -25,6 +25,7 @@ void CPU::reset() {
     instructionsRetired = 0;
     branchFlushes = 0;
     pc = 0;
+    microPC = 0;
     
     // Clear flags
     flags.IsEqual = false;
