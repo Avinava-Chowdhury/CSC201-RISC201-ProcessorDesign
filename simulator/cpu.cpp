@@ -1,6 +1,11 @@
 #include "cpu.h"
 #include "sim_exception.h"
+
+#include <algorithm>
 #include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
 #include <string>
 
 // CPU Constructor & Reset
@@ -16,7 +21,11 @@ void CPU::reset() {
     }
     // sp (r14) starts at 0x10000 since stack grows downwards
     reg[risc201::STACK_POINTER_REG_INDEX] = risc201::STACK_STARTING_ADDRESS; 
+    totalCycles = 0;
+    instructionsRetired = 0;
+    branchFlushes = 0;
     pc = 0;
+    microPC = 0;
     
     // Clear flags
     flags.IsEqual = false;
@@ -27,6 +36,12 @@ void CPU::reset() {
     if_id = IF_ID_Latch{};
     id_ex = ID_EX_Latch{};
     ex_memwb = EX_MEMWB_Latch{};
+
+    // Flush/Clear 6-stage pipeline latches
+    id_rr = ID_RR_Latch{};
+    rr_ex = RR_EX_Latch{};
+    ex_mem = EX_MEM_Latch{};
+    mem_wb_6 = MEM_WB_Latch_6{};
 
     // Program the horizontal control ROM
     loadControlStore();
@@ -133,6 +148,7 @@ void CPU::do_ID() {
 
     // Horizontal Microprogramming: Fetch control word from ROM
     size_t opIdx = static_cast<size_t>(instr.operation);
+    microPC = static_cast<uint32_t>(opIdx);
     MicroInstruction ctrlWord = (opIdx < CONTROL_STORE_SIZE) ? controlStore[opIdx] : controlStore[0];
 
     int32_t op1 = 0;
@@ -157,6 +173,7 @@ void CPU::do_ID() {
     id_ex.val2 = op2;
     id_ex.ctrl = ctrlWord; // Carry the control word forward to EX stage
 }
+
 
 // STAGE 3: EXECUTE
 
@@ -219,6 +236,7 @@ void CPU::do_EX() {
     if (takeBranch) {
         pc = targetPC;
         if_id.active = false;
+        branchFlushes++; // 1 stage (IF) was flushed
     }
 
     // output latch
@@ -250,6 +268,131 @@ void CPU::checkWordAccess(uint32_t addr, uint32_t faultPc) const {
                            "word access is not 4-byte aligned", faultPc)
                   .withAddress(addr);
     }
+}
+
+void CPU::do_ID_6() {
+    if (!if_id.active) {
+        id_rr.active = false;
+        return;
+    }
+
+    id_rr.active = true;
+    id_rr.pc = if_id.pc;
+    
+    // Parse instruction bitfields
+    auto decodedOpt = risc201::convertFromBinary(if_id.instruction);
+    if (!decodedOpt.has_value()) {
+        throw SimException(FaultType::INVALID_OPCODE,
+                           "undefined opcode in instruction word " + hex32(if_id.instruction),
+                           if_id.pc);
+    }
+    id_rr.decoded = decodedOpt.value();
+    
+    // Look up control word from Control Store ROM array
+    size_t opIdx = static_cast<size_t>(id_rr.decoded.operation);
+    microPC = static_cast<uint32_t>(opIdx);
+    id_rr.ctrl = (opIdx < CONTROL_STORE_SIZE) ? controlStore[opIdx] : controlStore[0];
+}
+
+void CPU::do_RR_6() {
+    if (!id_rr.active) {
+        rr_ex.active = false;
+        return;
+    }
+
+    rr_ex.active = true;
+    rr_ex.pc = id_rr.pc;
+    rr_ex.decoded = id_rr.decoded;
+    rr_ex.ctrl = id_rr.ctrl;
+
+    int32_t op1 = 0;
+    int32_t op2 = 0;
+
+    if (id_rr.decoded.operation == risc201::OperationCode::MOV || 
+        id_rr.decoded.operation == risc201::OperationCode::NOT ||
+        id_rr.decoded.operation == risc201::OperationCode::NEG ||
+        id_rr.decoded.operation == risc201::OperationCode::ABS) {
+        op1 = id_rr.decoded.usesConstantNumber ? id_rr.decoded.calculateFinalConstantValue() : reg[id_rr.decoded.sourceRegister1];
+    } else {
+        op1 = reg[id_rr.decoded.sourceRegister1];
+        op2 = id_rr.decoded.usesConstantNumber ? id_rr.decoded.calculateFinalConstantValue() : reg[id_rr.decoded.sourceRegister2];
+    }
+
+    rr_ex.val1 = op1;
+    rr_ex.val2 = op2;
+}
+
+void CPU::do_EX_6() {
+    if (!rr_ex.active) {
+        ex_mem.active = false;
+        return;
+    }
+
+    // Step 1: Execute the ALU operation
+    risc201::ALUResult aluOut = alu.execute(rr_ex.ctrl.aluOp, rr_ex.val1, rr_ex.val2);
+
+    // Step 2: Conditional Flag Updates 
+    if (rr_ex.ctrl.updateFlags) {
+        flags.IsEqual = (rr_ex.val1 == rr_ex.val2);
+        flags.IsGreaterThan = (rr_ex.val1 > rr_ex.val2);
+    }
+    // Step 3: Branch Target and Condition Evaluation
+    bool takeBranch = false;
+    uint32_t targetPC = 0;
+
+    switch (rr_ex.ctrl.branchType) {
+        case BranchControl::NONE:
+            break;
+            
+        case BranchControl::COND_EQ:
+            if (flags.IsEqual) {
+                takeBranch = true;
+                targetPC = rr_ex.pc + rr_ex.decoded.branchJumpDistance;
+            }
+            break;
+            
+        case BranchControl::COND_GT:
+            if (flags.IsGreaterThan) {
+                takeBranch = true;
+                targetPC = rr_ex.pc + rr_ex.decoded.branchJumpDistance;
+            }
+            break;
+            
+        case BranchControl::UNCOND:
+            takeBranch = true;
+            targetPC = rr_ex.pc + rr_ex.decoded.branchJumpDistance;
+            break;
+            
+        case BranchControl::CALL:
+            takeBranch = true;
+            targetPC = rr_ex.pc + rr_ex.decoded.branchJumpDistance;
+            aluOut.value = rr_ex.pc + risc201::BYTES_PER_WORD;
+            break;
+            
+        case BranchControl::RET:
+            takeBranch = true;
+            targetPC = static_cast<uint32_t>(reg[risc201::RETURN_ADDRESS_REG_INDEX]);
+            break;
+    }
+
+    // Step 4: Handle branch redirection, flushes, and final latch packaging
+    if (takeBranch) {
+        pc = targetPC;
+        if_id.active = false;
+        id_rr.active = false;
+        branchFlushes++;
+    }
+
+    ex_mem.active = true;
+    ex_mem.pc = rr_ex.pc;
+    
+    ex_mem.dest_reg = (rr_ex.ctrl.branchType == BranchControl::CALL)
+                        ? static_cast<uint8_t>(risc201::RETURN_ADDRESS_REG_INDEX)
+                        : rr_ex.decoded.destinationRegister;
+
+    ex_mem.alu_result = aluOut.value;
+    ex_mem.store_data = reg[rr_ex.decoded.destinationRegister];
+    ex_mem.ctrl = rr_ex.ctrl;
 }
 
 uint32_t CPU::readWord(uint32_t addr, uint32_t faultPc) const {
@@ -315,7 +458,7 @@ void CPU::do_MEM_WB() {
     if (!ex_memwb.active) {
         return;
     }
-
+    instructionsRetired++;
     int32_t writebackValue = ex_memwb.alu_result;
     uint32_t memAddr = static_cast<uint32_t>(ex_memwb.alu_result);
 
@@ -341,16 +484,72 @@ void CPU::do_MEM_WB() {
     }
 }
 
+void CPU::do_MEM_6() {
+    if (!ex_mem.active) {
+        mem_wb_6.active = false;
+        return;
+    }
+
+    int32_t writebackValue = ex_mem.alu_result;
+    uint32_t memAddr = static_cast<uint32_t>(ex_mem.alu_result);
+    // Step 2: Memory Read (LD) handling
+    if (ex_mem.ctrl.memRead) {
+        writebackValue = static_cast<int32_t>(readWord(memAddr, ex_mem.pc));
+    }
+    // Step 3: Memory Write (ST) handling with safety checks
+    if (ex_mem.ctrl.memWrite) {
+        checkWordAccess(memAddr, ex_mem.pc);
+        checkStackWrite(memAddr, ex_mem.pc);
+        writeWord(memAddr, static_cast<uint32_t>(ex_mem.store_data), ex_mem.pc);
+    }
+    // Initial output packaging for downstream writeback stage
+    mem_wb_6.active = true;
+    mem_wb_6.pc = ex_mem.pc;
+    mem_wb_6.dest_reg = ex_mem.dest_reg;
+    mem_wb_6.final_value = writebackValue;
+    mem_wb_6.ctrl = ex_mem.ctrl;
+}
+
+void CPU::do_WB_6() {
+    if (!mem_wb_6.active) {
+        return;
+    }
+    
+    // Step 1: Instruction Retirement Counter
+    instructionsRetired++;
+    // Step 2: Register File Writeback & Stack Pointer Safeguards
+    if (mem_wb_6.ctrl.regWrite) {
+        int32_t finalVal = mem_wb_6.final_value;
+        if (mem_wb_6.dest_reg == risc201::STACK_POINTER_REG_INDEX) {
+            checkStackPointer(static_cast<uint32_t>(finalVal), mem_wb_6.pc);
+        }
+        reg[mem_wb_6.dest_reg] = finalVal;
+    }
+}
+
 // Clock Cycle Stepping in reverse 
 void CPU::tick() {
     // a faulted CPU stays frozen until reset()
     if (faulted) return;
 
     try {
-        do_MEM_WB();
-        do_EX();
-        do_ID();
-        do_IF();
+        totalCycles++; // 1 clock tick = 1 cycle
+
+        if (mode == PipelineMode::STAGE_6) {
+            // Reverse-order stage evaluation for 6-stage pipeline
+            do_WB_6();
+            do_MEM_6();
+            do_EX_6();
+            do_RR_6();
+            do_ID_6();
+            do_IF();
+        } else {
+            // Existing 4-stage pipeline execution path
+            do_MEM_WB();
+            do_EX();
+            do_ID();
+            do_IF();
+        }
     } catch (const SimException&) {
         faulted = true;
         throw;   // let the CLI print the report
@@ -359,4 +558,65 @@ void CPU::tick() {
 
 void CPU::stepInstruction() {
     tick();
+}
+// ASCII Stack Memory Visualizer
+void CPU::printStackMemory(std::ostream& out, int maxWords) const {
+    const uint32_t sp =
+        static_cast<uint32_t>(reg[risc201::STACK_POINTER_REG_INDEX]);
+
+    const uint32_t base = risc201::STACK_STARTING_ADDRESS;
+    const uint32_t limit = risc201::STACK_LOWEST_LIMIT;
+
+    if (maxWords < 1) {
+        maxWords = 16;
+    }
+
+    out << "\n========== RISC201 STACK ==========\n";
+    out << "PC         : " << risc201::hex32(pc) << '\n';
+    out << "microPC    : " << risc201::hex32(microPC) << '\n';
+    out << "SP         : " << risc201::hex32(sp) << '\n';
+    out << "Stack base : " << risc201::hex32(base) << '\n';
+    out << "Stack limit: " << risc201::hex32(limit) << '\n';
+    out << "-----------------------------------\n";
+    out << "Address      | Contents   | Status\n";
+    out << "-----------------------------------\n";
+
+    if (sp == base && sp >= limit) { {
+        out << "  Stack is empty.\n";
+        out << "===================================\n";
+        return;
+    }
+
+    if (sp < limit || sp > base ||
+        sp % risc201::BYTES_PER_WORD != 0) {
+        out << "  Invalid stack pointer; cannot render frame.\n";
+        out << "===================================\n";
+        return;
+    }
+
+    int shown = 0;
+
+    for (uint32_t addr = sp;
+         addr < base && shown < maxWords;
+         addr += risc201::BYTES_PER_WORD, ++shown) {
+        try {
+            uint32_t value = readWord(addr, pc);
+
+            out << "  " << risc201::hex32(addr)
+                << " | " << risc201::hex32(value)
+                << " | " << (addr == sp ? "<- SP (TOP)" : "USED")
+                << '\n';
+        } catch (const SimException&) {
+            out << "  " << risc201::hex32(addr)
+                << " | <error>    | UNREADABLE\n";
+        }
+    }
+
+    if (shown == maxWords &&
+        static_cast<uint64_t>(sp) +
+            static_cast<uint64_t>(shown) * risc201::BYTES_PER_WORD < base) {
+        out << "  ... more stack words omitted\n";
+    }
+
+    out << "===================================\n";
 }

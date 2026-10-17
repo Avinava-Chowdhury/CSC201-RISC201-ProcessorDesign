@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <cstdint>
+#include <iosfwd>
 #include "alu.h"
 #include "isa.h"
 #include "sim_exception.h"
@@ -55,28 +56,79 @@ struct EX_MEMWB_Latch {
     MicroInstruction ctrl;               // Surviving control signals (regWrite, memRead, memWrite)
 };
 
+// 6-Stage Pipeline Latches
+struct ID_RR_Latch {
+    bool active = false;
+    uint32_t pc = 0;
+    risc201::DecodedInstruction decoded;
+    MicroInstruction ctrl;
+};
+
+struct RR_EX_Latch {
+    bool active = false;
+    uint32_t pc = 0;
+    risc201::DecodedInstruction decoded;
+    int32_t val1 = 0;
+    int32_t val2 = 0;
+    MicroInstruction ctrl;
+};
+
+struct EX_MEM_Latch {
+    bool active = false;
+    uint32_t pc = 0;
+    uint8_t dest_reg = 0;
+    int32_t alu_result = 0;
+    int32_t store_data = 0;
+    MicroInstruction ctrl;
+};
+
+struct MEM_WB_Latch_6 {
+    bool active = false;
+    uint32_t pc = 0;
+    uint8_t dest_reg = 0;
+    int32_t final_value = 0;
+    MicroInstruction ctrl;
+};
+
+enum class PipelineMode {
+    STAGE_4,
+    STAGE_6
+};
+
 // PIPELINED CPU CLASS
 class CPU {
 public:
     std::vector<uint32_t> instrMem; // 4096 words (16 KB)
     std::vector<uint8_t>  dataMem;  // 65536 bytes (64 KB)
     
-    // Processor state
-    int32_t reg[16]; 
-    uint32_t pc; 
-    risc201::ProcessorFlags flags;
+   // Processor state
+int32_t reg[16]; 
+uint32_t pc;
+uint32_t microPC = 0;
+risc201::ProcessorFlags flags;
     bool faulted = false;   // set when a hardware fault stops the CPU
 
     // Pipeline Registers
     IF_ID_Latch if_id;
     ID_EX_Latch id_ex;
     EX_MEMWB_Latch ex_memwb;
+
+    // 6-Stage Pipeline Registers
+    ID_RR_Latch id_rr;
+    RR_EX_Latch rr_ex;
+    EX_MEM_Latch ex_mem;
+    MEM_WB_Latch_6 mem_wb_6;
     
     // Microprogrammed Control Store
     static constexpr size_t CONTROL_STORE_SIZE = 64; 
     MicroInstruction controlStore[CONTROL_STORE_SIZE];
     
     risc201::ALU alu; // Isolated ALU class
+
+    PipelineMode mode = PipelineMode::STAGE_4;
+    uint64_t totalCycles = 0;
+    uint64_t instructionsRetired = 0;
+    uint64_t branchFlushes = 0;
 
     CPU(); 
 
@@ -94,6 +146,8 @@ public:
     
     // Stack safety checks (throw SimException when something is wrong)
     void checkStackPointer(uint32_t newSP, uint32_t faultPc) const;
+    // ASCII stack memory visualizer
+    void printStackMemory(std::ostream& out, int maxWords = 16) const;
 
     void checkStackWrite(uint32_t addr, uint32_t faultPc) const;
 
@@ -102,4 +156,10 @@ public:
     void do_EX();
     void do_ID();
     void do_IF();
+    // 6-Stage Pipeline Stages
+    void do_ID_6();
+    void do_RR_6();
+    void do_EX_6();
+    void do_MEM_6();
+    void do_WB_6();
 };
