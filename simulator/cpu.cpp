@@ -289,6 +289,7 @@ void CPU::do_ID_6() {
     
     // Look up control word from Control Store ROM array
     size_t opIdx = static_cast<size_t>(id_rr.decoded.operation);
+    microPC = static_cast<uint32_t>(opIdx);
     id_rr.ctrl = (opIdx < CONTROL_STORE_SIZE) ? controlStore[opIdx] : controlStore[0];
 }
 
