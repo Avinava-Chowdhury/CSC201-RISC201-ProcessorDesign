@@ -101,10 +101,11 @@ public:
     std::vector<uint32_t> instrMem; // 4096 words (16 KB)
     std::vector<uint8_t>  dataMem;  // 65536 bytes (64 KB)
     
-    // Processor state
-    int32_t reg[16]; 
-    uint32_t pc; 
-    risc201::ProcessorFlags flags;
+   // Processor state
+int32_t reg[16]; 
+uint32_t pc;
+uint32_t microPC = 0;
+risc201::ProcessorFlags flags;
     bool faulted = false;   // set when a hardware fault stops the CPU
 
     // Pipeline Registers
