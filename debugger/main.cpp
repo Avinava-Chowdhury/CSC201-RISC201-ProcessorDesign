@@ -297,6 +297,7 @@ int main()
                     cpu.stepInstruction();
                 }
                 cout << "Stepped " << steps << " instruction(s). PC is now " << hex32(cpu.pc) << "\n";
+                printStack(cpu, 16);
             }
             catch (const SimException& e)
             {
