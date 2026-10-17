@@ -147,6 +147,7 @@ void CPU::do_ID() {
 
     // Horizontal Microprogramming: Fetch control word from ROM
     size_t opIdx = static_cast<size_t>(instr.operation);
+    microPC = static_cast<uint32_t>(opIdx);
     MicroInstruction ctrlWord = (opIdx < CONTROL_STORE_SIZE) ? controlStore[opIdx] : controlStore[0];
 
     int32_t op1 = 0;
