@@ -55,8 +55,8 @@ inline std::string hex32(uint32_t value) {
 class SimException : public std::runtime_error { // inherits from runtime error
 private:
     FaultType faultType;
-    uint32_t pc;
-    uint32_t badAddress;
+    uint32_t pc = 0;
+    uint32_t badAddress = 0;
     bool hasAddress = false;
 
     // New context storage fields
@@ -64,6 +64,13 @@ private:
     uint64_t cycle_ = 0;
     uint8_t upc_ = 0;
     const char* mode_ = "UNKNOWN";
+
+    // ADDITION: Safe string and conditional context fields from 1st program
+    std::string stageName;
+    std::string modeName;
+    uint64_t cycle = 0;
+    uint8_t upc = 0;
+    bool hasContext = false;
 
 public:
     explicit SimException(const std::string& message)
@@ -83,10 +90,17 @@ public:
 
     // Store execution context details
     void setContext(const char* stage, uint64_t cycle, uint8_t upc, const char* mode) {
-        stage_ = stage;
+        stage_ = stage ? stage : "UNKNOWN";
         cycle_ = cycle;
         upc_ = upc;
-        mode_ = mode;
+        mode_ = mode ? mode : "UNKNOWN";
+
+        // ADDITION: Populate 1st program's context fields safely
+        stageName = stage ? stage : "";
+        this->cycle = cycle;
+        this->upc = upc;
+        modeName = mode ? mode : "";
+        hasContext = true;
     }
 
     // multi-line description for the CLI
@@ -95,6 +109,13 @@ public:
         out << "*** HARDWARE FAULT: " << faultName(faultType) << " ***\n"
             << "    reason  : " << what() << "\n"
             << "    at PC   : " << std::hex << "0x" << pc << std::dec;
+
+        // ADDITION: Multi-line hex32 context block from 1st program
+        if (hasContext) {
+            out << "\n  stage   : " << stageName << " (" << modeName << ")"
+                << "\n  cycle   : " << cycle
+                << "\n  microPC : " << hex32(upc);
+        }
             
         if (hasAddress) {
             out << "\n    address : " << std::hex << "0x" << badAddress << std::dec;
@@ -108,11 +129,4 @@ public:
             
         return out.str();
     }
-};
-
-private:
-    FaultType faultType;
-    uint32_t pc = 0;
-    uint32_t badAddress = 0;
-    bool hasAddress = false;
 };
