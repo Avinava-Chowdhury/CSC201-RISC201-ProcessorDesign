@@ -771,6 +771,15 @@ uint64_t CPU::runUntilRetire(uint64_t n) {
     return instructionsRetired - start;
 }
 
+
+uint32_t CPU::nextExecPC() const {
+    if (mode == PipelineMode::STAGE_6) {
+        return rr_ex.pc; // Instruction about to enter EX in 6-stage
+    } else {
+        return id_ex.pc; // Instruction about to enter EX in 4-stage
+    }
+}
+
 // ASCII Stack Memory Visualizer
 void CPU::printStackMemory(std::ostream& out, int maxWords) const {
     const uint32_t sp =
