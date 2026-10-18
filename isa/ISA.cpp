@@ -117,9 +117,7 @@ int parseRegisterName(const std::string& originalName)
 
 namespace
 {
-    // A plain array (instead of std::array) so the compiler works out the
-    // element count itself -- adding an instruction never needs a size edit.
-    constexpr OperationDetails kOperationTable[] = {
+    constexpr std::array<OperationDetails, 29> kOperationTable = { {
         { "add",  OperationCode::ADD,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
         { "sub",  OperationCode::SUB,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
         { "mul",  OperationCode::MUL,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
@@ -128,7 +126,6 @@ namespace
         { "cmp",  OperationCode::CMP,  InstructionLayout::OPERATE, AssemblySyntax::COMPARE_ONLY,   true  },
         { "and",  OperationCode::AND,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
         { "or",   OperationCode::OR,   InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
-        { "xor",  OperationCode::XOR,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
         { "not",  OperationCode::NOT,  InstructionLayout::OPERATE, AssemblySyntax::SINGLE_ARG,     false },
         { "mov",  OperationCode::MOV,  InstructionLayout::OPERATE, AssemblySyntax::SINGLE_ARG,     true  },
         { "lsl",  OperationCode::LSL,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
@@ -148,8 +145,9 @@ namespace
         { "max",  OperationCode::MAX,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
         { "rol",  OperationCode::ROL,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
         { "ror",  OperationCode::ROR,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
-    };
-    
+        { "xor",  OperationCode::XOR,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
+        { "halt", OperationCode::HALT, InstructionLayout::OPERATE, AssemblySyntax::NO_ARGS,        false }
+    } };
 }  // namespace
 
 const OperationDetails* findByAssemblyText(const std::string& nameInAssembly)
