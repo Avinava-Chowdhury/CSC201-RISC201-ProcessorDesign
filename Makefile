@@ -1,7 +1,7 @@
 CXX=g++
 FLAGS=-std=c++20 -Iisa -Ialu -Iassembler -Isimulator -Idebugger
 
-SIM=simulator/main.cpp simulator/cpu.cpp alu/ALU.cpp isa/ISA.cpp
+SIM=simulator/main.cpp simulator/cpu.cpp simulator/horizontal_microcode.cpp alu/ALU.cpp isa/ISA.cpp
 ASM=assembler/main.cpp assembler/assembler.cpp assembler/pass1.cpp assembler/pass2.cpp assembler/tokenizer.cpp isa/ISA.cpp
 
 all: sim asm_tool
@@ -26,3 +26,4 @@ clean:
 
 test: sim asm_tool
 	bash tests/stack_faults.sh
+	bash tests/micro_tests.sh
