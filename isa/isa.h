@@ -32,19 +32,20 @@ int         parseRegisterName(const std::string& regName);   // Converts "sp" or
 // Operation Codes (Opcodes)
 // Every action the CPU can take is assigned a unique 5-bit ID. 
 
-enum class OperationCode : uint8_t 
+enum class OperationCode : uint8_t
 {
-    ADD = 0,  SUB = 1,  MUL = 2,  DIV = 3,  MOD = 4,
+    ADD = 0, SUB = 1, MUL = 2, DIV = 3, MOD = 4,
     CMP = 5,
-    AND = 6,  OR  = 7,
-    NOT = 8,  MOV = 9,
+    AND = 6, OR = 7,
+    NOT = 8, MOV = 9,
     LSL = 10, LSR = 11, ASR = 12,
     NOP = 13,
-    LD  = 14, ST  = 15,
+    LD = 14, ST = 15,
     BEQ = 16, BGT = 17, B = 18, CALL = 19, RET = 20,
-        NEG = 21, ABS = 22, MIN = 23, MAX = 24,
+    NEG = 21, ABS = 22, MIN = 23, MAX = 24,
     ROL = 25, ROR = 26,
-    XOR = 27
+    XOR = 27,
+    HALT = 28
 };
 
 using Opcode = OperationCode;
