@@ -7,6 +7,10 @@
 using namespace risc201;
 
 namespace {
+    // ADDITION: Compact Type Aliases (Available for future use)
+    using Op = risc201::OperationCode;
+    constexpr BranchControl N = BranchControl::NONE;
+
     // A condensed summary of all hardware signals needed for an instruction
     struct MicroProfile {
         OperationCode op;
@@ -63,12 +67,36 @@ namespace {
         
         { OperationCode::HALT, 0, 0, 0, 0, 0,  0, OperationCode::NOP,  0,   0,   0,   BranchControl::NONE,    0,    0,      1,    0,  0,  0,  1 }
     };
+
+    // ADDITION: Helper Functions for Word Creation (Available for future use)
+    MicroWord makeWord(MicroStage stage, Seq seq) {
+        MicroWord w;
+        w.valid = true;
+        w.stage = stage;
+        w.seq = seq;
+        return w;
+    }
+
+    void setReads(MicroWord& w, const MicroProfile& p) {
+        w.readRs1 = p.rs1; w.readRs2 = p.rs2; w.readRd = p.rd; w.readRa = p.ra; w.unaryOp = p.un;
+    }
+
+    void setExec(MicroWord& w, const MicroProfile& p) {
+        w.aluEnable = p.alu; w.aluOp = p.aluOp; w.updateFlags = p.flg;
+        w.trapDivZero = p.tdz; w.trapOverflow = p.tov;
+        w.branch = p.branch; w.linkPC = p.link; w.destIsRA = p.destIsRA; w.stopFetch = p.stop;
+    }
 } // namespace
 
 void buildControlStore(PipelineMode mode, MicroWord rom[], uint8_t dispatch[32]) {
     // 1. Initialize empty ROM
     for (size_t i = 0; i < CONTROL_STORE_SIZE; i++) {
         rom[i].valid = false;
+    }
+
+    // ADDITION: Initialize dispatch table to 0xFF (no routine)
+    for (int i = 0; i < 32; ++i) {
+        dispatch[i] = 0xFF; 
     }
     
     // 2. Address 0 is the universal FETCH microword
@@ -80,6 +108,13 @@ void buildControlStore(PipelineMode mode, MicroWord rom[], uint8_t dispatch[32])
 
     // 3. Expand each profile row into sequential microwords
     for (const auto& prof : kProfiles) {
+        
+        // ADDITION: ROM Size Overflow Check
+        const size_t len = (mode == PipelineMode::STAGE_6) ? 5 : 3;
+        if (nextFree + len > CONTROL_STORE_SIZE) {
+            throw std::logic_error("control store overflow while building microcode");
+        }
+
         uint8_t opIdx = static_cast<uint8_t>(prof.op);
         dispatch[opIdx] = nextFree; // Save entry point for dispatcher
 
@@ -137,6 +172,10 @@ void buildControlStore(PipelineMode mode, MicroWord rom[], uint8_t dispatch[32])
             MicroWord memWord;
             memWord.valid = true; memWord.stage = MicroStage::MEM;
             memWord.memRead = prof.mr; memWord.memWrite = prof.mw;
+            
+            // ADDITION: Hazard Unit Support in MEM Stage
+            memWord.regWrite = prof.rw; 
+            
             rom[nextFree++] = memWord;
 
             // Word 5: WB (Writeback)
@@ -180,9 +219,14 @@ std::string validateMicroWord(const MicroWord& word, MicroStage stage) {
             return "Memory/Writeback signals asserted early.";
     }
     if (word.memRead && word.memWrite) return "Simultaneous Memory Read and Write asserted.";
+    
+    // ADDITION: Stricter Validation Rules
+    if (word.readRd && word.readRa) return "readRd and readRa asserted together.";
+    if (word.trapDivZero && !word.aluEnable) return "trapDivZero requires aluEnable.";
+    if (stage == MicroStage::IF && word.seq != Seq::END) return "fetch word must end the routine.";
+    
     return "";
 }
-
 
 std::string describe(const MicroWord& word) {
     if (!word.valid) return "[INVALID]";
@@ -197,9 +241,7 @@ std::string describe(const MicroWord& word) {
         case MicroStage::WB: out << "WB"; break;
         case MicroStage::MEMWB: out << "MEMWB"; break;
     }
-
-
- out << "] ";
+    out << "] ";
     
     if (word.readRs1) out << "rdRs1 ";
     if (word.readRs2) out << "rdRs2 ";
@@ -211,9 +253,10 @@ std::string describe(const MicroWord& word) {
     if (word.memWrite) out << "memWR ";
     if (word.regWrite) out << "regWR ";
     if (word.branch != BranchControl::NONE) out << "BRANCH ";
-    if (word.seq == Seq::END) out << "(END)";
+    
+    // ADDITION: End/Next sequencer output string logic
+    if (word.seq == Seq::END) out << "[END]";
+    else out << "[NEXT]";
+    
     return out.str();
 }
-
-
-   
