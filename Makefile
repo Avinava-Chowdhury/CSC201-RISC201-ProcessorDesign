@@ -1,5 +1,5 @@
 CXX=g++
-FLAGS=-std=c++17 -Iisa -Ialu -Iassembler -Isimulator -Idebugger
+FLAGS=-std=c++20 -Iisa -Ialu -Iassembler -Isimulator -Idebugger
 
 SIM=simulator/main.cpp simulator/cpu.cpp alu/ALU.cpp isa/ISA.cpp
 ASM=assembler/main.cpp assembler/assembler.cpp assembler/pass1.cpp assembler/pass2.cpp assembler/tokenizer.cpp isa/ISA.cpp
