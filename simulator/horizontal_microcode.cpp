@@ -197,4 +197,23 @@ std::string describe(const MicroWord& word) {
         case MicroStage::WB: out << "WB"; break;
         case MicroStage::MEMWB: out << "MEMWB"; break;
     }
+
+
+ out << "] ";
+    
+    if (word.readRs1) out << "rdRs1 ";
+    if (word.readRs2) out << "rdRs2 ";
+    if (word.readRd) out << "rdRd ";
+    if (word.readRa) out << "rdRa ";
+    if (word.aluEnable) out << "ALU=ON ";
+    if (word.updateFlags) out << "updFlg ";
+    if (word.memRead) out << "memRD ";
+    if (word.memWrite) out << "memWR ";
+    if (word.regWrite) out << "regWR ";
+    if (word.branch != BranchControl::NONE) out << "BRANCH ";
+    if (word.seq == Seq::END) out << "(END)";
+    return out.str();
+}
+
+
    
