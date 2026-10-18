@@ -156,6 +156,8 @@ public:
     StageTrace microTrace[MICRO_TRACE_SLOTS];
     bool traceMicro = false;        // when true, the CLI prints the micro state after every tick
 
+    uint32_t nextExecPC() const;
+
     CPU(); 
 
     void reset();
