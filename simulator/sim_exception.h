@@ -53,9 +53,21 @@ inline std::string hex32(uint32_t value) {
 
 // SimException acts as our hardware fault trigger.
 class SimException : public std::runtime_error { // inherits from runtime error
+private:
+    FaultType faultType;
+    uint32_t pc;
+    uint32_t badAddress;
+    bool hasAddress = false;
+
+    // New context storage fields
+    const char* stage_ = "UNKNOWN";
+    uint64_t cycle_ = 0;
+    uint8_t upc_ = 0;
+    const char* mode_ = "UNKNOWN";
+
 public:
     explicit SimException(const std::string& message)
-        : std::runtime_error(message), faultType(FaultType::GENERIC) {}
+        : std::runtime_error(message), faultType(FaultType::GENERIC), pc(0) {}
 
     SimException(FaultType type, const std::string& message, uint32_t faultPc = 0)
         : std::runtime_error(message), faultType(type), pc(faultPc) {}
@@ -69,17 +81,34 @@ public:
 
     FaultType type() const { return faultType; }
 
+    // Store execution context details
+    void setContext(const char* stage, uint64_t cycle, uint8_t upc, const char* mode) {
+        stage_ = stage;
+        cycle_ = cycle;
+        upc_ = upc;
+        mode_ = mode;
+    }
+
     // multi-line description for the CLI
     std::string report() const {
         std::ostringstream out;
         out << "*** HARDWARE FAULT: " << faultName(faultType) << " ***\n"
-            << "  reason  : " << what() << "\n"
-            << "  at PC   : " << hex32(pc);
+            << "    reason  : " << what() << "\n"
+            << "    at PC   : " << std::hex << "0x" << pc << std::dec;
+            
         if (hasAddress) {
-            out << "\n  address : " << hex32(badAddress);
+            out << "\n    address : " << std::hex << "0x" << badAddress << std::dec;
         }
+        
+        // Print the newly added context fields
+        out << "\n    context : Cycle " << cycle_ 
+            << ", Stage " << stage_ 
+            << ", Mode " << mode_ 
+            << ", MicroPC " << static_cast<int>(upc_);
+            
         return out.str();
     }
+};
 
 private:
     FaultType faultType;
