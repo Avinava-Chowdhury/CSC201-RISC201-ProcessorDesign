@@ -756,9 +756,6 @@ void CPU::tick() {
     }
 }
 
-void CPU::stepInstruction() {
-    tick();
-}
 
 // Ticks until n more instructions retire, or the CPU halts or faults.
 // Returns how many instructions actually retired. A fault propagates as SimException.
