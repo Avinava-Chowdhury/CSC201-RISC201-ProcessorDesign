@@ -7,26 +7,7 @@
 #include "alu.h"
 #include "isa.h"
 #include "sim_exception.h"
-
-// HORIZONTAL MICROINSTRUCTION (The Control Word)
-enum class BranchControl : uint8_t {  // type of control flow
-    NONE, 
-    COND_EQ,  
-    COND_GT,  
-    UNCOND,   
-    CALL,    
-    RET       
-};
-
-struct MicroInstruction {
-    bool regWrite;      
-    bool memRead;       
-    bool memWrite;      
-    bool updateFlags;   
-    
-    BranchControl branchType;
-    risc201::OperationCode aluOp; 
-};
+#include "microcode.h"
 
 // PIPELINE LATCHES to store intermediate values at each stage
 struct IF_ID_Latch {
@@ -43,7 +24,7 @@ struct ID_EX_Latch {
     int32_t val1 = 0;                    // Read from register file (rs1)
     int32_t val2 = 0;                    // Read from register file (rs2) OR immediate
     
-    MicroInstruction ctrl;               // The control word traveling with the instruction
+    MicroWord ctrl;                      // The control word traveling with the instruction
 };
 
 struct EX_MEMWB_Latch {
@@ -53,7 +34,7 @@ struct EX_MEMWB_Latch {
     int32_t alu_result = 0;
     int32_t store_data = 0;              // Raw value of rs1 to store (for ST)
     
-    MicroInstruction ctrl;               // Surviving control signals (regWrite, memRead, memWrite)
+    MicroWord ctrl;                      // Surviving control signals (regWrite, memRead, memWrite)
 };
 
 // 6-Stage Pipeline Latches
@@ -61,7 +42,7 @@ struct ID_RR_Latch {
     bool active = false;
     uint32_t pc = 0;
     risc201::DecodedInstruction decoded;
-    MicroInstruction ctrl;
+    MicroWord ctrl;
 };
 
 struct RR_EX_Latch {
@@ -70,7 +51,7 @@ struct RR_EX_Latch {
     risc201::DecodedInstruction decoded;
     int32_t val1 = 0;
     int32_t val2 = 0;
-    MicroInstruction ctrl;
+    MicroWord ctrl;
 };
 
 struct EX_MEM_Latch {
@@ -79,7 +60,7 @@ struct EX_MEM_Latch {
     uint8_t dest_reg = 0;
     int32_t alu_result = 0;
     int32_t store_data = 0;
-    MicroInstruction ctrl;
+    MicroWord ctrl;
 };
 
 struct MEM_WB_Latch_6 {
@@ -87,7 +68,7 @@ struct MEM_WB_Latch_6 {
     uint32_t pc = 0;
     uint8_t dest_reg = 0;
     int32_t final_value = 0;
-    MicroInstruction ctrl;
+    MicroWord ctrl;
 };
 
 enum class PipelineMode {
@@ -102,10 +83,10 @@ public:
     std::vector<uint8_t>  dataMem;  // 65536 bytes (64 KB)
     
    // Processor state
-int32_t reg[16]; 
-uint32_t pc;
-uint32_t microPC = 0;
-risc201::ProcessorFlags flags;
+    int32_t reg[16]; 
+    uint32_t pc;
+    uint32_t microPC = 0;
+    risc201::ProcessorFlags flags;
     bool faulted = false;   // set when a hardware fault stops the CPU
 
     // Pipeline Registers
@@ -120,8 +101,7 @@ risc201::ProcessorFlags flags;
     MEM_WB_Latch_6 mem_wb_6;
     
     // Microprogrammed Control Store
-    static constexpr size_t CONTROL_STORE_SIZE = 64; 
-    MicroInstruction controlStore[CONTROL_STORE_SIZE];
+    MicroWord controlStore[CONTROL_STORE_SIZE];
     
     risc201::ALU alu; // Isolated ALU class
 
