@@ -17,6 +17,7 @@ int main()
     CPU cpu;
     cpu.reset();
     set<uint32_t> breakpoints;
+    bool utraceEnabled = false;
 
     cout << "RISC201 Interactive Debugger\n";
     cout << "Type 'help' for commands or 'quit' to exit.\n";
@@ -41,8 +42,9 @@ int main()
             string filename;
             if (ss >> filename)
             {
-                if (cpu.loadHex(filename)) cout << "Successfully loaded " << filename << "\n";
-                else cout << "Error: Could not open file " << filename << "\n";
+                string err;
+                if (cpu.loadHex(filename, err)) cout << "Successfully loaded " << filename << "\n";
+                else cout << "Error: " << err << "\n";
             }
             else
             {
@@ -57,9 +59,9 @@ int main()
         }
         else if (command == "step")
         {
-            if (cpu.faulted)
+            if (cpu.faulted || cpu.halted)
             {
-                cout << "CPU is halted by a fault. Type 'reset' to start over.\n";
+                cout << "CPU is halted. Type 'reset' to start over.\n";
                 continue;
             }
             int steps = 1;
@@ -69,27 +71,75 @@ int main()
                 try { steps = stoi(arg); }
                 catch (...) { cout << "Usage: step [n]\n"; continue; }
             }
+            if (steps < 1)
+            {
+                cout << "Error: Number of instructions must be >= 1.\n";
+                continue;
+            }
 
             try
             {
-                for (int i = 0; i < steps; i++)
-                {
-                    if (!breakpoints.empty() && i > 0 && breakpoints.count(cpu.pc))
-                    {
-                        cout << "Breakpoint hit at " << hex32(cpu.pc) << " before completing "
-                             << steps << " steps.\n";
-                        steps = i;
-                        break;
-                    }
-                    cpu.stepInstruction();
-                }
-                cout << "Stepped " << steps << " instruction(s). PC is now " << hex32(cpu.pc) << "\n";
+                uint64_t retired = cpu.runUntilRetire(steps);
+                cout << "Stepped until " << retired << " instruction(s) retired.\n";
+                printPipeline(cpu);
             }
             catch (const SimException& e)
             {
                 cout << "\n" << e.report() << "\n";
                 cout << "CPU halted. Type 'reset' to start over.\n";
             }
+        }
+        else if (command == "tick")
+        {
+            if (cpu.faulted || cpu.halted)
+            {
+                cout << "CPU is halted. Type 'reset' to start over.\n";
+                continue;
+            }
+            int cycles = 1;
+            string arg;
+            if (ss >> arg)
+            {
+                try { cycles = stoi(arg); }
+                catch (...) { cout << "Usage: tick [n]\n"; continue; }
+            }
+            if (cycles < 1)
+            {
+                cout << "Error: Number of cycles must be >= 1.\n";
+                continue;
+            }
+
+            try
+            {
+                for (int i = 0; i < cycles; i++)
+                {
+                    if (!breakpoints.empty() && breakpoints.count(cpu.nextExecPC()))
+                    {
+                        cout << "Breakpoint hit at " << hex32(cpu.nextExecPC()) << ".\n";
+                        break;
+                    }
+                    cpu.tick();
+                    if (utraceEnabled) printMicro(cpu);
+                    if (cpu.halted || cpu.faulted) break;
+                }
+                printPipeline(cpu);
+            }
+            catch (const SimException& e)
+            {
+                cout << "\n" << e.report() << "\n";
+                cout << "CPU halted. Type 'reset' to start over.\n";
+            }
+        }
+        else if (command == "mode")
+        {
+            int m;
+            if (ss >> m && (m == 4 || m == 6))
+            {
+                cpu.setMode(m == 4 ? PipelineMode::STAGE_4 : PipelineMode::STAGE_6);
+                breakpoints.clear();
+                cout << "Switched to " << m << "-stage pipeline. CPU reset and breakpoints cleared.\n";
+            }
+            else cout << "Usage: mode 4|6\n";
         }
         else if (command == "continue")
         {
@@ -145,9 +195,32 @@ int main()
                 cout << "Usage: delete <addr>\n";
             }
         }
-        else if (command == "next")
+        else if (command == "pipe")
         {
-            printNextInstruction(cpu);
+            printPipeline(cpu);
+        }
+        else if (command == "micro")
+        {
+            printMicro(cpu);
+        }
+        else if (command == "ucontrol")
+        {
+            printMicroRom(cpu);
+        }
+        else if (command == "utrace")
+        {
+            string arg;
+            if (ss >> arg)
+            {
+                if (arg == "on") { utraceEnabled = true; cout << "Microtrace ON.\n"; }
+                else if (arg == "off") { utraceEnabled = false; cout << "Microtrace OFF.\n"; }
+                else cout << "Usage: utrace on|off\n";
+            }
+            else cout << "Usage: utrace on|off\n";
+        }
+        else if (command == "stats")
+        {
+            printStats(cpu);
         }
         else if (command == "regs")
         {
@@ -182,7 +255,7 @@ int main()
                 try { count = stoi(arg); }
                 catch (...) { count = 16; }
             }
-            printStack(cpu, count);
+            printStack(cpu, count > 0 ? count : 16);
         }
         else if (command == "help")
         {
