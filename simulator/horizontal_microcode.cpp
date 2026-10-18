@@ -183,3 +183,18 @@ std::string validateMicroWord(const MicroWord& word, MicroStage stage) {
     return "";
 }
 
+
+std::string describe(const MicroWord& word) {
+    if (!word.valid) return "[INVALID]";
+    std::ostringstream out;
+    out << "[";
+    switch(word.stage) {
+        case MicroStage::IF: out << "IF"; break;
+        case MicroStage::ID: out << "ID"; break;
+        case MicroStage::RR: out << "RR"; break;
+        case MicroStage::EX: out << "EX"; break;
+        case MicroStage::MEM: out << "MEM"; break;
+        case MicroStage::WB: out << "WB"; break;
+        case MicroStage::MEMWB: out << "MEMWB"; break;
+    }
+   
