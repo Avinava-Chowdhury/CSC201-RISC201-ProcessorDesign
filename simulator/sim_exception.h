@@ -13,18 +13,34 @@ enum class FaultType {
     MISALIGNED,
     STACK_OVERFLOW,
     STACK_UNDERFLOW,
-    STACK_CORRUPTION
+    STACK_CORRUPTION,
+    // --- New Faults ---
+    DIV_BY_ZERO,
+    ARITHMETIC_OVERFLOW,
+    PC_OUT_OF_BOUNDS,
+    MISALIGNED_PC,
+    ILLEGAL_INSTRUCTION,
+    INVALID_MICROPC,
+    ILLEGAL_MICROINSTRUCTION
 };
 
 inline const char* faultName(FaultType type) {
     switch (type) {
-        case FaultType::INVALID_OPCODE:   return "INVALID_OPCODE";
-        case FaultType::OUT_OF_BOUNDS:    return "OUT_OF_BOUNDS";
-        case FaultType::MISALIGNED:       return "MISALIGNED";
-        case FaultType::STACK_OVERFLOW:   return "STACK_OVERFLOW";
-        case FaultType::STACK_UNDERFLOW:  return "STACK_UNDERFLOW";
+        case FaultType::GENERIC: return "GENERIC";
+        case FaultType::INVALID_OPCODE: return "INVALID_OPCODE";
+        case FaultType::OUT_OF_BOUNDS: return "OUT_OF_BOUNDS";
+        case FaultType::MISALIGNED: return "MISALIGNED";
+        case FaultType::STACK_OVERFLOW: return "STACK_OVERFLOW";
+        case FaultType::STACK_UNDERFLOW: return "STACK_UNDERFLOW";
         case FaultType::STACK_CORRUPTION: return "STACK_CORRUPTION";
-        default:                          return "GENERIC";
+        case FaultType::DIV_BY_ZERO: return "DIV_BY_ZERO";
+        case FaultType::ARITHMETIC_OVERFLOW: return "ARITHMETIC_OVERFLOW";
+        case FaultType::PC_OUT_OF_BOUNDS: return "PC_OUT_OF_BOUNDS";
+        case FaultType::MISALIGNED_PC: return "MISALIGNED_PC";
+        case FaultType::ILLEGAL_INSTRUCTION: return "ILLEGAL_INSTRUCTION";
+        case FaultType::INVALID_MICROPC: return "INVALID_MICROPC";
+        case FaultType::ILLEGAL_MICROINSTRUCTION: return "ILLEGAL_MICROINSTRUCTION";
+        default: return "UNKNOWN_FAULT";
     }
 }
 
