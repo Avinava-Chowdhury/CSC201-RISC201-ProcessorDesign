@@ -19,9 +19,23 @@ using namespace debugger;
 
 int main(int argc, char** argv)
 {
-    if (argc > 1 && string(argv[1]) != "--script") return runBatch(argc, argv);
+    bool useVertical = false;
+    int startIdx = 1;
+
+    // 1. Check for vertical flag first
+    if (argc > 1 && string(argv[1]) == "--vertical") {
+        useVertical = true;
+        startIdx = 2; // Shift argument index
+    }
+
+    // 2. Existing batch check
+    if (argc > startIdx && string(argv[startIdx]) != "--script") {
+        return runBatch(argc, argv);
+    }
 
     CPU cpu;
+    // 3. Set the mode using your EXISTING ControlUnit enum before resetting
+    cpu.setControlUnit(useVertical ? ControlUnit::VERTICAL : ControlUnit::HORIZONTAL);
     cpu.reset();
     set<uint32_t> breakpoints;
     map<string, uint32_t> symbolMap;
