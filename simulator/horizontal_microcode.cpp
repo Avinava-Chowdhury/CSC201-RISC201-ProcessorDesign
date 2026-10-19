@@ -41,7 +41,7 @@ namespace {
         { OperationCode::OR,   1, 1, 0, 0, 0,  1, OperationCode::OR,   0,   0,   0,   BranchControl::NONE,    0,    0,      0,    0,  0,  1,  0 },
         { OperationCode::XOR,  1, 1, 0, 0, 0,  1, OperationCode::XOR,  0,   0,   0,   BranchControl::NONE,    0,    0,      0,    0,  0,  1,  0 },
         { OperationCode::NOT,  1, 0, 0, 0, 1,  1, OperationCode::NOT,  0,   0,   0,   BranchControl::NONE,    0,    0,      0,    0,  0,  1,  0 },
-        { OperationCode::MOV,  0, 1, 0, 0, 0,  1, OperationCode::MOV,  0,   0,   0,   BranchControl::NONE,    0,    0,      0,    0,  0,  1,  0 },
+        { OperationCode::MOV,  1, 0, 0, 0, 1,  1, OperationCode::MOV,  0,   0,   0,   BranchControl::NONE,    0,    0,      0,    0,  0,  1,  0 },
         
         { OperationCode::LSL,  1, 1, 0, 0, 0,  1, OperationCode::LSL,  0,   0,   0,   BranchControl::NONE,    0,    0,      0,    0,  0,  1,  0 },
         { OperationCode::LSR,  1, 1, 0, 0, 0,  1, OperationCode::LSR,  0,   0,   0,   BranchControl::NONE,    0,    0,      0,    0,  0,  1,  0 },
@@ -243,17 +243,39 @@ std::string describe(const MicroWord& word) {
     }
     out << "] ";
     
+    // register-read controls
     if (word.readRs1) out << "rdRs1 ";
     if (word.readRs2) out << "rdRs2 ";
-    if (word.readRd) out << "rdRd ";
-    if (word.readRa) out << "rdRa ";
-    if (word.aluEnable) out << "ALU=ON ";
-    if (word.updateFlags) out << "updFlg ";
-    if (word.memRead) out << "memRD ";
+    if (word.readRd)  out << "rdRd ";
+    if (word.readRa)  out << "rdRa ";
+    if (word.unaryOp) out << "unary ";
+
+    // EX controls: ALU operation, flags, traps, branch type, link / stop-fetch
+    if (word.aluEnable) {
+        const OperationDetails* d = findByOpcodeId(word.aluOp);
+        out << "ALU=" << (d ? d->nameInAssembly : "?") << " ";
+    }
+    if (word.updateFlags)  out << "updFlg ";
+    if (word.trapDivZero)  out << "trapDiv0 ";
+    if (word.trapOverflow) out << "trapOvf ";
+    switch (word.branch) {
+        case BranchControl::NONE:    break;
+        case BranchControl::COND_EQ: out << "BR=BEQ "; break;
+        case BranchControl::COND_GT: out << "BR=BGT "; break;
+        case BranchControl::UNCOND:  out << "BR=B ";   break;
+        case BranchControl::CALL:    out << "BR=CALL "; break;
+        case BranchControl::RET:     out << "BR=RET "; break;
+    }
+    if (word.linkPC)    out << "linkPC ";
+    if (word.destIsRA)  out << "destRA ";
+    if (word.stopFetch) out << "stopFetch ";
+
+    // MEM / WB controls
+    if (word.memRead)  out << "memRD ";
     if (word.memWrite) out << "memWR ";
     if (word.regWrite) out << "regWR ";
-    if (word.branch != BranchControl::NONE) out << "BRANCH ";
-    
+    if (word.halt)     out << "HALT ";
+
     // ADDITION: End/Next sequencer output string logic
     if (word.seq == Seq::END) out << "[END]";
     else out << "[NEXT]";
