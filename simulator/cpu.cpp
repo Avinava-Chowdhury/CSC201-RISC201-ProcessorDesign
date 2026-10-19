@@ -70,13 +70,20 @@ void CPU::reset() {
     ex_mem = EX_MEM_Latch{};
     mem_wb_6 = MEM_WB_Latch_6{};
 
-    // Program the horizontal control ROM for the selected pipeline
+    // Program BOTH control ROMs for the selected pipeline (horizontal and vertical hold the same microprogram)
     buildControlStore(mode, controlStore, dispatch);
+    buildVerticalStore(mode, verticalStore, dispatch);
 }
 
 // Select 4-stage or 6-stage; always starts from a clean reset
 void CPU::setMode(PipelineMode m) {
     mode = m;
+    reset();
+}
+
+// Select horizontal or vertical control unit; always starts from a clean reset
+void CPU::setControlUnit(ControlUnit cu) {
+    controlUnit = cu;
     reset();
 }
 
@@ -154,9 +161,20 @@ bool CPU::loadHex(const std::string& path, std::string& err) {
 // Microprogram sequencing helpers
 // Fetch the microword at upc for the given stage: checks it exists, belongs
 // to this stage and is legal, and records it in the per-stage trace.
-const MicroWord& CPU::microFetch(uint8_t upc, MicroStage st, uint32_t pc) {
+// Control-store read. Horizontal: the ROM word is used directly.
+// Vertical: the encoded word goes through the decode layer first.
+MicroWord CPU::readControlStore(uint8_t upc, std::string* err) const {
+    if (controlUnit == ControlUnit::VERTICAL) return decodeMicroWord(verticalStore[upc], err);
+    return controlStore[upc];                          // uint8_t upc cannot exceed 255
+}
+
+MicroWord CPU::microFetch(uint8_t upc, MicroStage st, uint32_t pc) {
     curUPC = upc;
-    const MicroWord& w = controlStore[upc];            // uint8_t upc cannot exceed 255
+    std::string decodeErr;
+    MicroWord w = readControlStore(upc, &decodeErr);
+    if (!decodeErr.empty())
+        throw SimException(FaultType::ILLEGAL_MICROINSTRUCTION,
+                           "vertical decode error at µPC " + hex32(upc) + ": " + decodeErr, pc);
     if (!w.valid)
         throw SimException(FaultType::INVALID_MICROPC, "µPC " + hex32(upc) + " has no microword", pc);
     if (w.stage != st)
@@ -181,7 +199,7 @@ uint8_t CPU::advance(const MicroWord& w, uint8_t upc, bool lastStage, uint32_t p
 }
 
 // Read a microword without tracing or validating (hazard unit only)
-const MicroWord& CPU::peek(uint8_t upc) const { return controlStore[upc]; }
+MicroWord CPU::peek(uint8_t upc) const { return readControlStore(upc); }
 
 // Decode + reserved-field checks. Never throws for a bad instruction: it fills pf
 // so the caller can raise it now (4-stage) or park it in the latch (6-stage, where
