@@ -40,7 +40,7 @@ run_case() {
 }
 
 # normal push/pop: value comes back, sp is restored, no fault
-run_case stack_ok          "r2 : 0x0000002a" "r14: 0x00010000"
+run_case stack_ok         "r2 : 0x0000002a" "r14: 0x00010000"
 if ./asm_tool tests/stack/stack_ok.s "$tmp/ok.hex" --hex > /dev/null &&
    printf 'load %s\nstep 40\nquit\n' "$tmp/ok.hex" | ./sim | grep -q "HARDWARE FAULT"; then
     echo "[FAIL] stack_ok (raised a fault)"
@@ -53,6 +53,8 @@ run_case stack_underflow   "STACK_UNDERFLOW"  "r14: 0x00010000"
 run_case stack_misaligned  "MISALIGNED"       "r14: 0x00010000"
 run_case stack_corrupt     "STACK_CORRUPTION" "address : 0x0000fffc"
 run_case stack_oob         "OUT_OF_BOUNDS"    "address : 0x00020000"
+run_case div_zero          "DIV_BY_ZERO"
+run_case invalid_opcode    "INVALID_OPCODE"
 
 echo
 echo "$passed passed, $failed failed"
