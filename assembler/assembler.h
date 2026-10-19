@@ -19,6 +19,9 @@ public:
     // Write machine code as binary or hexadecimal text
     bool writeOutput(const std::string& outPath, bool asHex = false);
 
+    // Export the symbol table for the simulator[cite: 7]
+    bool writeSymbolTable(const std::string& symPath);
+
 private:
     std::vector<std::string> rawLines;
     std::vector<uint32_t> machineCode;
