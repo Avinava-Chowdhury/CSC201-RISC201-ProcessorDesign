@@ -210,7 +210,23 @@ int main(int argc, char** argv)
         }
         else if (command == "ucontrol")
         {
-            printMicroRom(cpu);
+            string arg;
+            ss >> arg;
+            if (arg.empty() || arg == "horizontal" || arg == "h" || arg == "vertical" || arg == "v" || arg == "compare" || arg == "c")
+                printMicroRom(cpu, arg.empty() ? "horizontal" : arg);
+            else cout << "Usage: ucontrol [vertical|compare]\n";
+        }
+        else if (command == "cu")
+        {
+            string arg;
+            if (ss >> arg && (arg == "h" || arg == "horizontal" || arg == "v" || arg == "vertical"))
+            {
+                cpu.setControlUnit(arg[0] == 'v' ? ControlUnit::VERTICAL : ControlUnit::HORIZONTAL);
+                breakpoints.clear();
+                cout << "Switched to " << (arg[0] == 'v' ? "VERTICAL" : "HORIZONTAL")
+                     << " control unit. CPU reset and breakpoints cleared.\n";
+            }
+            else cout << "Usage: cu h|v   (currently " << (cpu.controlUnit == ControlUnit::VERTICAL ? "vertical" : "horizontal") << ")\n";
         }
         else if (command == "utrace")
         {
