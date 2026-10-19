@@ -37,6 +37,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <array>
 
 // Everything below is defined INSIDE namespace risc201 so that these are
 // definitions of the functions declared in isa.h (and not brand-new
