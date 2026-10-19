@@ -163,6 +163,13 @@ int main(int argc, char** argv)
                     cout << "pc set to " << hex32(val) << "\n";
                     continue;
                 }
+
+                else if (regArg == "upc") 
+                {
+                     cpu.curUPC = static_cast<uint8_t>(val);
+                     cout << "upc set to " << val << "\n";
+                     continue;
+                }
                 
                 if (rIdx >= 0 && rIdx < 16) {
                     cpu.reg[rIdx] = val;
