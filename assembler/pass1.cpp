@@ -2,6 +2,7 @@
 #include "tokenizer.h"
 #include "isa.h"
 #include <stdexcept>
+#include <string>
 
 using namespace risc201;
 
@@ -25,12 +26,27 @@ std::vector<std::string> splitLabelLines(const std::vector<std::string>& rawLine
     result.reserve(rawLines.size());
 
     for (const std::string& line : rawLines) {
-        // Work on the code part only; a ':' inside a comment is not a label.
-        std::string rest = trim(line.substr(0, line.find(';')));
+        std::string rest = line;
 
-        // No colon means no label, so keep the line exactly as written.
+        // Safely strip all comment types before looking for label colons
+        size_t commentHash = rest.find('#');
+        if (commentHash != std::string::npos) rest = rest.substr(0, commentHash);
+        
+        size_t commentSemi = rest.find(';');
+        if (commentSemi != std::string::npos) rest = rest.substr(0, commentSemi);
+        
+        size_t commentSlash = rest.find("//");
+        if (commentSlash != std::string::npos) rest = rest.substr(0, commentSlash);
+
+        rest = trim(rest);
+
+        if (rest.empty()) {
+            continue;
+        }
+
+        // No colon means no label, so keep the line.
         if (rest.find(':') == std::string::npos) {
-            result.push_back(line);
+            result.push_back(rest);
             continue;
         }
 
@@ -57,7 +73,7 @@ std::vector<std::string> splitLabelLines(const std::vector<std::string>& rawLine
 std::map<std::string, uint32_t> buildSymbolTable(const std::vector<std::string>& rawLines)
 {
     std::map<std::string, uint32_t> symbols;
-    uint32_t currentAddress = 0;
+    uint32_t currentAddress = 0; // Tracks memory map natively without tracking .data/.word
 
     for (const std::string& line : rawLines) {
         std::vector<std::string> tokens = tokenizeLine(line);
@@ -77,6 +93,7 @@ std::map<std::string, uint32_t> buildSymbolTable(const std::vector<std::string>&
 
             symbols[labelName] = currentAddress;
         } else {
+            // Valid instructions increment address counter by 4 bytes
             currentAddress += BYTES_PER_WORD;
         }
     }
