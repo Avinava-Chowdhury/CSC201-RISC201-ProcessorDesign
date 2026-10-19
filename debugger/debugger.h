@@ -3,7 +3,7 @@
 #include "cpu.h"
 #include "sim_exception.h"
 #include "isa.h"
-#include "horizontal_microcode.h" // Added to access describe()
+#include "horizontal_microcode.h" // access describe()
 
 #include <iomanip>
 #include <iostream>
@@ -141,10 +141,10 @@ namespace debugger
             auto t = cpu.microTrace[stageIdx];
             if (t.active) {
                 cout << left << setw(5) << name 
-                     << " uPC=" << hex32(t.upc) 
+                     << " uPC=" << hex32(t.uPC) 
                      << "  pc=" << hex32(t.pc) << "  ";
                 if (name == "IF") cout << "FETCH\n";
-                else cout << describe(cpu.controlStore[t.upc]) << "\n";
+                else cout << describe(cpu.controlStore[t.uPC]) << "\n";
             }
         };
 
@@ -166,7 +166,7 @@ namespace debugger
     inline void printMicroRom(const CPU& cpu)
     {
         cout << "--- Control Store ROM ---\n";
-        for (size_t i = 0; i < CPU::CONTROL_STORE_SIZE; ++i) {
+        for (size_t i = 0; i < CONTROL_STORE_SIZE; ++i) {
             if (cpu.controlStore[i].valid) {
                 cout << "uPC=" << hex32(static_cast<uint32_t>(i)) << " : " 
                      << describe(cpu.controlStore[i]) << "\n";
@@ -281,6 +281,11 @@ namespace debugger
              << "  micro               - Show the micro-instruction active in each stage\n"
              << "  ucontrol            - Dump the entire horizontal control store ROM\n"
              << "  stats               - Show performance statistics\n"
+             << "  diagram [n] [w]     - Pipeline diagram: instruction x cycle chart (n instructions, w cycles per block)\n"
+             << "  cycles [rows]       - Cycle-by-stage table\n"
+             << "  timeline csv <f>    - Export the recorded cycle-by-stage timeline as CSV\n"
+             << "  compare <f> [diagram] [clk4 clk6]\n"
+             << "                      - Run <f.hex> on BOTH pipelines and print the CPI table\n"
              << "  help                - Show this message\n"
              << "  quit                - Exit the debugger\n";
     }
