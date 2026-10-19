@@ -31,3 +31,4 @@ clean:
 test: sim asm_tool disassembler.exe
 	bash tests/stack_faults.sh
 	bash tests/micro_tests.sh
+    bash tests/disassembler_roundtrip.sh
