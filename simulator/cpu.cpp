@@ -36,6 +36,7 @@ void CPU::reset() {
     // sp (r14) starts at 0x10000 since stack grows downwards
     reg[risc201::STACK_POINTER_REG_INDEX] = risc201::STACK_STARTING_ADDRESS; 
     totalCycles = 0;
+    timeline.clear();
     instructionsRetired = 0;
     branchFlushes = 0;
     stallCycles = 0;
@@ -722,6 +723,13 @@ void CPU::tick() {
     for (auto& t : microTrace) t = StageTrace{};
     stallRequest = false;
 
+    // Timeline: remember what sits in every stage's INPUT latch before the stages run
+    const bool rec = recordTimeline && timeline.size() < TIMELINE_CAP;
+    InputSnapshot pre;
+    if (rec) pre = snapshotInputs();
+    const uint64_t flushesBefore = branchFlushes;
+    const bool fetchStoppedBefore = fetchStopped;
+
     try {
         totalCycles++; // 1 clock tick = 1 cycle
 
@@ -748,6 +756,9 @@ void CPU::tick() {
         }
 
         if (stallRequest) stallCycles++;
+
+        // a taken branch or a HALT in EX squashed the younger instructions this cycle
+        if (rec) recordCycle(pre, branchFlushes > flushesBefore || (fetchStopped && !fetchStoppedBefore));
     } catch (SimException& e) {
         faulted = true;
         e.setContext(curStage, totalCycles, curUPC,
@@ -771,6 +782,54 @@ uint64_t CPU::runUntilRetire(uint64_t n) {
     return instructionsRetired - start;
 }
 
+
+// ---------------------------------------------------------------------------
+// Timeline recorder. It only OBSERVES the pipeline; it never changes any state.
+// Stages are evaluated back-to-front, so each stage works on what its input latch held
+// BEFORE the tick. Two exceptions: IF fetches into if_id (read after the tick), and a
+// flush clears if_id / id_rr before ID / RR get to run (those cells are marked 'x').
+// ---------------------------------------------------------------------------
+CPU::InputSnapshot CPU::snapshotInputs() const {
+    InputSnapshot s;
+    s.active[1] = if_id.active;  s.pc[1] = if_id.pc;
+    if (mode == PipelineMode::STAGE_6) {
+        s.active[2] = id_rr.active;    s.pc[2] = id_rr.pc;
+        s.active[3] = rr_ex.active;    s.pc[3] = rr_ex.pc;
+        s.active[4] = ex_mem.active;   s.pc[4] = ex_mem.pc;
+        s.active[5] = mem_wb_6.active; s.pc[5] = mem_wb_6.pc;
+    } else {
+        s.active[3] = id_ex.active;    s.pc[3] = id_ex.pc;
+        s.active[4] = ex_memwb.active; s.pc[4] = ex_memwb.pc;
+    }
+    return s;
+}
+
+void CPU::recordCycle(const InputSnapshot& pre, bool flushed) {
+    CycleRecord row;
+    row.cycle = totalCycles;
+
+    auto put = [&](int slot, char tag) {
+        row.cell[slot].valid = true;
+        row.cell[slot].pc = pre.pc[slot];
+        row.cell[slot].tag = tag;
+    };
+    // ID (and RR in the 6-stage pipe) can be squashed, or held by a load-use stall
+    const char frontTag = flushed ? 'x' : (stallRequest ? 'S' : ' ');
+
+    if (pre.active[1]) put(1, frontTag);
+    if (pre.active[3]) put(3, ' ');
+    if (pre.active[4]) put(4, ' ');
+    if (mode == PipelineMode::STAGE_6) {
+        if (pre.active[2]) put(2, frontTag);
+        if (pre.active[5]) put(5, ' ');
+    }
+    // IF only ran if nothing stalled the front end and fetching has not been stopped by HALT
+    if (!stallRequest && if_id.active) {
+        row.cell[0].valid = true;
+        row.cell[0].pc = if_id.pc;
+    }
+    timeline.push_back(row);
+}
 
 uint32_t CPU::nextExecPC() const {
     if (mode == PipelineMode::STAGE_6) {
