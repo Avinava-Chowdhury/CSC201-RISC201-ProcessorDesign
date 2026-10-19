@@ -306,7 +306,18 @@ namespace
     // Comment-stripped, comma-free word list for one raw source line.
     std::vector<std::string> splitWords(const std::string& line)
     {
-        std::string clean = line.substr(0, line.find(';'));
+        std::string clean = line;
+
+        // Safely strip all comment types before executing macro logic
+        size_t commentHash = clean.find('#');
+        if (commentHash != std::string::npos) clean = clean.substr(0, commentHash);
+        
+        size_t commentSemi = clean.find(';');
+        if (commentSemi != std::string::npos) clean = clean.substr(0, commentSemi);
+        
+        size_t commentSlash = clean.find("//");
+        if (commentSlash != std::string::npos) clean = clean.substr(0, commentSlash);
+
         for (char& c : clean)
         {
             if (c == ',') c = ' ';
