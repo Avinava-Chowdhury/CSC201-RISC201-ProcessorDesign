@@ -48,11 +48,13 @@ namespace debugger
 
     // Runs one program to HALT / fault / cycle limit. 'cpu' is left in its final state so the
     // caller can print its diagram.
-    inline RunResult runProgram(CPU& cpu, const string& path, PipelineMode m, uint64_t maxCycles, bool record)
+    inline RunResult runProgram(CPU& cpu, const string& path, PipelineMode m, uint64_t maxCycles, bool record,
+                                ControlUnit cu = ControlUnit::HORIZONTAL)
     {
         RunResult r;
         r.name = baseName(path);
         cpu.recordTimeline = record;
+        cpu.controlUnit = cu;
         cpu.setMode(m);
         if (!cpu.loadHex(path, r.error)) return r;
         r.loaded = true;
@@ -89,15 +91,16 @@ namespace debugger
         double clk4 = 0, clk6 = 0;      // optional clock periods in ns; 0 = not given
         string csvPath;
         size_t diagramInstr = 24;
+        ControlUnit control = ControlUnit::HORIZONTAL;   // --vertical selects the encoded control store
     };
 
     inline CompareRow compareProgram(const string& path, const CompareOptions& opt)
     {
         CompareRow row;
         CPU* cpu = new CPU();                       // heap: the CPU object is large
-        row.p4 = runProgram(*cpu, path, PipelineMode::STAGE_4, opt.maxCycles, opt.diagram);
+        row.p4 = runProgram(*cpu, path, PipelineMode::STAGE_4, opt.maxCycles, opt.diagram, opt.control);
         if (opt.diagram && row.p4.loaded) { cout << "\n===== " << row.p4.name << " =====\n"; printGantt(*cpu, opt.diagramInstr); }
-        row.p6 = runProgram(*cpu, path, PipelineMode::STAGE_6, opt.maxCycles, opt.diagram);
+        row.p6 = runProgram(*cpu, path, PipelineMode::STAGE_6, opt.maxCycles, opt.diagram, opt.control);
         if (opt.diagram && row.p6.loaded) { cout << "\n"; printGantt(*cpu, opt.diagramInstr); cout << "\n"; }
         delete cpu;
         row.sameState = row.p4.loaded && row.p6.loaded && sameArchState(row.p4, row.p6);
@@ -191,6 +194,8 @@ namespace debugger
             {
                 if (a == "--compare") compareMode = true;
                 else if (a == "--diagram") opt.diagram = true;
+                else if (a == "--vertical") opt.control = ControlUnit::VERTICAL;
+                else if (a == "--horizontal") opt.control = ControlUnit::HORIZONTAL;
                 else if (a == "--csv") opt.csvPath = need("--csv");
                 else if (a == "--max-cycles") opt.maxCycles = stoull(need("--max-cycles"));
                 else if (a == "--clk4") opt.clk4 = stod(need("--clk4"));
@@ -204,7 +209,7 @@ namespace debugger
         if (!compareMode || files.empty())
         {
             cerr << "Usage: sim --compare <a.hex> [b.hex ...] [--diagram] [--diagram-instr N] [--csv out.csv]\n"
-                    "                [--max-cycles N] [--clk4 <ns> --clk6 <ns>]\n"
+                    "                [--max-cycles N] [--clk4 <ns> --clk6 <ns>] [--vertical]\n"
                     "       sim                      (no arguments: interactive debugger)\n";
             return 2;
         }
