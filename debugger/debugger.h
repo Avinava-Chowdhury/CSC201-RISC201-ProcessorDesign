@@ -4,6 +4,7 @@
 #include "sim_exception.h"
 #include "isa.h"
 #include "horizontal_microcode.h" // access describe()
+#include "vertical_microcode.h"   // vertical store: describeVertical(), verifyVerticalStore(), VROM_EMPTY
 
 #include <iomanip>
 #include <iostream>
@@ -135,7 +136,8 @@ namespace debugger
     inline void printMicro(const CPU& cpu)
     {
         cout << "cycle " << cpu.totalCycles << "  [" 
-             << (cpu.mode == PipelineMode::STAGE_6 ? "6-stage" : "4-stage") << "]\n";
+             << (cpu.mode == PipelineMode::STAGE_6 ? "6-stage" : "4-stage") << ", "
+             << (cpu.controlUnit == ControlUnit::VERTICAL ? "vertical" : "horizontal") << " control]\n";
         
         auto printStage = [&](const string& name, int stageIdx) {
             auto t = cpu.microTrace[stageIdx];
@@ -144,7 +146,7 @@ namespace debugger
                      << " uPC=" << hex32(t.uPC) 
                      << "  pc=" << hex32(t.pc) << "  ";
                 if (name == "IF") cout << "FETCH\n";
-                else cout << describe(cpu.controlStore[t.uPC]) << "\n";
+                else cout << describe(cpu.readControlStore(t.uPC)) << "\n";
             }
         };
 
@@ -163,9 +165,36 @@ namespace debugger
         }
     }
 
-    inline void printMicroRom(const CPU& cpu)
+    // ucontrol            -> horizontal ROM (all control fields)
+    // ucontrol vertical   -> vertical ROM: raw hex, bit fields, and the decoded control lines
+    // ucontrol compare    -> size comparison + decode-layer equivalence check
+    inline void printMicroRom(const CPU& cpu, const string& which = "horizontal")
     {
-        cout << "--- Control Store ROM ---\n";
+        if (which == "vertical" || which == "v")
+        {
+            cout << "--- Vertical Control Store ROM (16-bit words: STAGE|END|PAYLOAD -> decode layer) ---\n";
+            for (size_t i = 0; i < CONTROL_STORE_SIZE; ++i) {
+                if (cpu.verticalStore[i] != VROM_EMPTY)
+                    cout << "uPC=" << hex32(static_cast<uint32_t>(i)) << " : " << describeVertical(cpu.verticalStore[i]) << "\n";
+            }
+            return;
+        }
+        if (which == "compare" || which == "c")
+        {
+            size_t used = 0;
+            for (size_t i = 0; i < CONTROL_STORE_SIZE; ++i) if (cpu.controlStore[i].valid) ++used;
+            const size_t hBits = CONTROL_STORE_SIZE * HORIZONTAL_WORD_BITS, vBits = CONTROL_STORE_SIZE * VERTICAL_WORD_BITS;
+            cout << "--- Horizontal vs Vertical control store ("
+                 << (cpu.mode == PipelineMode::STAGE_6 ? "6-stage" : "4-stage") << ") ---\n"
+                 << "microwords in use : " << used << " of " << CONTROL_STORE_SIZE << "\n"
+                 << "horizontal word   : " << HORIZONTAL_WORD_BITS << " bits  -> ROM " << hBits << " bits (" << hBits / 8 << " bytes)\n"
+                 << "vertical word     : " << VERTICAL_WORD_BITS   << " bits  -> ROM " << vBits << " bits (" << vBits / 8 << " bytes)\n"
+                 << "ROM saving        : " << (100.0 * (hBits - vBits) / hBits) << " %  (cost: one decode layer between ROM and stages)\n";
+            string err = verifyVerticalStore(cpu.controlStore, cpu.verticalStore);
+            cout << "decode check      : " << (err.empty() ? "OK - every vertical word decodes to its horizontal word" : "MISMATCH - " + err) << "\n";
+            return;
+        }
+        cout << "--- Horizontal Control Store ROM ---\n";
         for (size_t i = 0; i < CONTROL_STORE_SIZE; ++i) {
             if (cpu.controlStore[i].valid) {
                 cout << "uPC=" << hex32(static_cast<uint32_t>(i)) << " : " 
@@ -279,7 +308,9 @@ namespace debugger
              << "  stack [n]           - Show up to n words of the stack (default 16)\n"
              << "  mode <4|6>          - Switch between 4-stage and 6-stage pipeline\n"
              << "  micro               - Show the micro-instruction active in each stage\n"
-             << "  ucontrol            - Dump the entire horizontal control store ROM\n"
+             << "  ucontrol [vertical|compare]\n"
+             << "                      - Dump the horizontal control store (default), the vertical store, or compare their sizes\n"
+             << "  cu <h|v>            - Select horizontal or vertical control unit (resets the CPU)\n"
              << "  stats               - Show performance statistics\n"
              << "  diagram [n] [w]     - Pipeline diagram: instruction x cycle chart (n instructions, w cycles per block)\n"
              << "  cycles [rows]       - Cycle-by-stage table\n"
