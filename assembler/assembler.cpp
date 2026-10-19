@@ -43,36 +43,16 @@ bool Assembler::assemble()
     try {
         // ---------------------------------------------------------
         // Step 1: Expand macros
-        //
-        // Example:
-        //     push r1
-        //
-        // becomes:
-        //     sub sp, sp, 4
-        //     st r1, 0[sp]
-        //
-        // This happens before Pass 1 because macros can become
-        // multiple instructions and therefore affect addresses.
         // ---------------------------------------------------------
         vector<string> expandedLines = expandMacroLines(splitLabelLines(rawLines));
 
         // ---------------------------------------------------------
         // Step 2: Pass 1
-        //
-        // Build the symbol table:
-        //
-        //     label -> address
-        //
-        // Example:
-        //     loop:       -> 0x0000
         // ---------------------------------------------------------
         symbolTable = buildSymbolTable(expandedLines);
 
         // ---------------------------------------------------------
         // Step 3: Pass 2
-        //
-        // Tokenize each line, build its decoded instruction,
-        // encode it into a 32-bit machine word, and store it.
         // ---------------------------------------------------------
         machineCode.clear();
 
@@ -88,11 +68,6 @@ bool Assembler::assemble()
                 continue;
             }
 
-            // Labels do not produce machine instructions.
-            // Example:
-            //     loop:
-            //
-            // The label was already handled by Pass 1.
             bool isLabel =
                 tokens.size() == 1 &&
                 !tokens[0].empty() &&
@@ -109,8 +84,7 @@ bool Assembler::assemble()
                 symbolTable
             );
 
-            // Convert the decoded instruction into
-            // the final 32-bit machine word.
+            // Convert the decoded instruction into the final 32-bit machine word.
             uint32_t word = encode(instr);
 
             machineCode.push_back(word);
@@ -184,5 +158,25 @@ bool Assembler::writeOutput(const string& outPath, bool asHex)
         outFile.close();
     }
 
+    return true;
+}
+
+// ---------------------------------------------------------
+// Symbol Table Export
+// ---------------------------------------------------------
+bool Assembler::writeSymbolTable(const string& symPath)
+{
+    ofstream outFile(symPath);
+
+    if (!outFile.is_open()) {
+        cerr << "Error: Could not open symbol file for writing: " << symPath << "\n";
+        return false;
+    }
+
+    for (const auto& pair : symbolTable) {
+        outFile << pair.first << ": 0x" << hex << setw(8) << setfill('0') << pair.second << "\n";
+    }
+
+    outFile.close();
     return true;
 }
