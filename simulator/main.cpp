@@ -255,6 +255,9 @@ int main(int argc, char** argv)
                 }
 
                 printPipeline(cpu);
+                
+                // Auto-show stack during step
+                cpu.printStackMemory(std::cout, 8);
             }
             catch (const SimException& e)
             {
@@ -475,7 +478,8 @@ int main(int argc, char** argv)
                 try { count = stoi(arg); }
                 catch (...) { count = 16; }
             }
-            printStack(cpu, count > 0 ? count : 16);
+            // Use built-in CPU function instead of debugger printStack
+            cpu.printStackMemory(std::cout, count > 0 ? count : 16);
         }
         else if (command == "diagram")
         {
