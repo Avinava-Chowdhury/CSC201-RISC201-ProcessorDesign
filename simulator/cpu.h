@@ -8,6 +8,7 @@
 #include "isa.h"
 #include "sim_exception.h"
 #include "horizontal_microcode.h"
+#include "vertical_microcode.h"
 
 // POISON RECORD: a fault found while decoding/fetching on a possibly wrong path.
 // It travels with the instruction and is only raised if the instruction survives
@@ -91,6 +92,12 @@ enum class PipelineMode {
     STAGE_6
 };
 
+// Which control store drives the pipeline
+enum class ControlUnit {
+    HORIZONTAL,     // one ROM bit per control line (controlStore)
+    VERTICAL        // encoded 16-bit words + decode layer (verticalStore)
+};
+
 // RESULT of the shared execute core (used by both the 4-stage and 6-stage EX stages)
 struct ExOut {
     int32_t  value = 0;                  // ALU result (or return address PC+4 for CALL)
@@ -154,7 +161,9 @@ public:
     
     // Microprogrammed Control Store
     MicroWord controlStore[CONTROL_STORE_SIZE];
+    VMicroWord verticalStore[CONTROL_STORE_SIZE];   // second control store: encoded (vertical) microwords
     uint8_t dispatch[32] = {};      // opcode -> entry micro-address of that opcode's routine
+    ControlUnit controlUnit = ControlUnit::HORIZONTAL;   // which store microFetch/peek read from
     
     risc201::ALU alu; // Isolated ALU class
 
@@ -184,14 +193,16 @@ public:
     bool loadHex(const std::string& path, std::string& err);
     void loadControlStore(); // Maps opcodes to microinstructions at startup
     void setMode(PipelineMode m);   // selects 4-stage or 6-stage, then resets the CPU
+    void setControlUnit(ControlUnit cu);   // selects horizontal or vertical control, then resets the CPU
     
     void tick(); 
     void stepInstruction();  // Wrapper that calls tick() to stay compatible with main.cpp
     uint64_t runUntilRetire(uint64_t n);  // ticks until n more instructions retire (or halt/fault); returns how many retired
 
     // Microprogram sequencing helpers
-    const MicroWord& microFetch(uint8_t upc, MicroStage st, uint32_t pc);   // fetch + validate + trace
-    const MicroWord& peek(uint8_t upc) const;                               // read a microword without side effects (hazard unit)
+    MicroWord readControlStore(uint8_t upc, std::string* err = nullptr) const;   // control-store read; vertical mode goes through the decode layer
+    MicroWord microFetch(uint8_t upc, MicroStage st, uint32_t pc);          // fetch + validate + trace
+    MicroWord peek(uint8_t upc) const;                                      // read a microword without side effects (hazard unit)
     uint8_t advance(const MicroWord& w, uint8_t upc, bool lastStage, uint32_t pc);  // sequencer: next micro-address
 
     // Decode and operand read
