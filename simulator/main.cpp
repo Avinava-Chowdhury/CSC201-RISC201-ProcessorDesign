@@ -6,6 +6,7 @@
 #include "../debugger/compare.h"
 
 #include <iostream>
+#include <fstream>
 #include <set>
 #include <sstream>
 #include <string>
@@ -17,21 +18,46 @@ using namespace debugger;
 int main(int argc, char** argv)
 {
     // Batch mode:  ./sim --compare a.hex b.hex ...   (no interactive prompt)
-    if (argc > 1) return runBatch(argc, argv);
+    if (argc > 1 && string(argv[1]) != "--script") return runBatch(argc, argv);
 
     CPU cpu;
     cpu.reset();
     set<uint32_t> breakpoints;
     bool utraceEnabled = false;
 
-    cout << "RISC201 Interactive Debugger\n";
-    cout << "Type 'help' for commands or 'quit' to exit.\n";
+    istream* inStream = &cin;
+    ifstream scriptFile;
+    bool batchMode = false;
+
+    // Feature: Batch/CSV script execution mode
+    if (argc > 2 && string(argv[1]) == "--script")
+    {
+        scriptFile.open(argv[2]);
+        if (!scriptFile.is_open())
+        {
+            cout << "Error: Could not open script file " << argv[2] << "\n";
+            return 1;
+        }
+        inStream = &scriptFile;
+        batchMode = true;
+    }
+
+    if (!batchMode)
+    {
+        cout << "RISC201 Interactive Debugger\n";
+        cout << "Type 'help' for commands or 'quit' to exit.\n";
+    }
 
     string line;
     while (true)
     {
-        cout << "\n(debug) > ";
-        if (!getline(cin, line)) break;
+        if (!batchMode) cout << "\n(debug) > ";
+        if (!getline(*inStream, line)) break;
+
+        if (batchMode)
+        {
+            cout << "\n(debug) > " << line << "\n";
+        }
 
         istringstream ss(line);
         string command;
@@ -47,14 +73,85 @@ int main(int argc, char** argv)
             string filename;
             if (ss >> filename)
             {
+                // Feature: Direct .s File Loading
+                if (filename.length() > 2 && filename.substr(filename.length() - 2) == ".s")
+                {
+                    cout << "Auto-assembling " << filename << " in the background...\n";
+                    string hexfile = filename.substr(0, filename.length() - 2) + ".hex";
+                    
+                    string cmd = "make " + hexfile;
+                    if (system(cmd.c_str()) != 0) 
+                    {
+                        cmd = "mingw32-make " + hexfile;
+                        system(cmd.c_str());
+                    }
+                    filename = hexfile; // Switch to loading the newly generated hex
+                }
+
                 string err;
                 if (cpu.loadHex(filename, err)) cout << "Successfully loaded " << filename << "\n";
                 else cout << "Error: " << err << "\n";
             }
             else
             {
-                cout << "Usage: load <file.hex>\n";
+                cout << "Usage: load <file.hex | file.s>\n";
             }
+        }
+        else if (command == "disasm")
+        {
+            // Feature: The disasm command
+            string arg;
+            uint32_t addr;
+            if (ss >> arg && parseAddress(arg, addr))
+            {
+                uint32_t index = addr / 4;
+                if (index < cpu.instrMem.size()) cout << hex32(addr) << ":  " << formatInstruction(cpu.instrMem[index], addr) << "\n";
+                else cout << "Error: Address " << hex32(addr) << " is outside instruction memory bounds.\n";
+            }
+            else cout << "Usage: disasm <addr>\n";
+        }
+        else if (command == "setreg")
+        {
+            // Feature: Register Write Command
+            string regArg, valArg;
+            uint32_t val;
+            if (ss >> regArg >> valArg && parseAddress(valArg, val))
+            {
+                int rIdx = -1;
+                if (regArg.size() > 1 && regArg[0] == 'r') {
+                    try { rIdx = stoi(regArg.substr(1)); } catch (...) {}
+                } else if (regArg == "sp") rIdx = 14;
+                else if (regArg == "ra") rIdx = 15;
+                else if (regArg == "pc") {
+                    cpu.pc = val;
+                    cout << "pc set to " << hex32(val) << "\n";
+                    continue;
+                }
+                
+                if (rIdx >= 0 && rIdx < 16) {
+                    cpu.reg[rIdx] = val;
+                    cout << "r" << rIdx << " set to " << hex32(val) << "\n";
+                } else {
+                    cout << "Invalid register. Use r0-r15, sp, ra, or pc.\n";
+                }
+            }
+            else cout << "Usage: setreg <reg> <value>\n";
+        }
+        else if (command == "setmem")
+        {
+            // Feature: Memory Write Command
+            string addrArg, valArg;
+            uint32_t addr, val;
+            if (ss >> addrArg >> valArg && parseAddress(addrArg, addr) && parseAddress(valArg, val))
+            {
+                try {
+                    cpu.writeWord(addr, val, cpu.pc);
+                    cout << "Memory at " << hex32(addr) << " set to " << hex32(val) << "\n";
+                } catch (const SimException& e) {
+                    cout << "Error: " << e.what() << "\n";
+                }
+            }
+            else cout << "Usage: setmem <addr> <value>\n";
         }
         else if (command == "reset")
         {
@@ -280,7 +377,6 @@ int main(int argc, char** argv)
         }
         else if (command == "diagram")
         {
-            // diagram [max_instructions] [cycles_per_block]  -- instruction x cycle chart
             size_t maxInstr = 40, perBlock = 16;
             string a1, a2;
             try { if (ss >> a1) maxInstr = stoul(a1); if (ss >> a2) perBlock = stoul(a2); }
@@ -291,7 +387,6 @@ int main(int argc, char** argv)
         }
         else if (command == "cycles")
         {
-            // cycles [max_rows]  -- cycle x stage table
             size_t rows = 60;
             string a1;
             try { if (ss >> a1) rows = stoul(a1); }
@@ -311,7 +406,6 @@ int main(int argc, char** argv)
         }
         else if (command == "compare")
         {
-            // compare <file.hex> [diagram] [clk4_ns clk6_ns]
             string file, a1;
             if (!(ss >> file)) { cout << "Usage: compare <file.hex> [diagram] [clk4_ns clk6_ns]\n"; continue; }
             CompareOptions opt;
