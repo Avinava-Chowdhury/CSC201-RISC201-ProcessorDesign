@@ -3,7 +3,7 @@
 #include "cpu.h"
 #include "sim_exception.h"
 #include "isa.h"
-#include "microcode.h" // Added to access describe()
+#include "horizontal_microcode.h" // Added to access describe()
 
 #include <iomanip>
 #include <iostream>
