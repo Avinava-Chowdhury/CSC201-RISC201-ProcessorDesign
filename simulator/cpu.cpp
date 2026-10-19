@@ -892,18 +892,33 @@ void CPU::printStackMemory(std::ostream& out, int maxWords) const {
         return;
     }
 
+    // Start a few words BELOW the stack pointer to show "Free" space
+    uint32_t startAddr = sp - (4 * risc201::BYTES_PER_WORD);
     int shown = 0;
 
-    for (uint32_t addr = sp;
+    for (uint32_t addr = startAddr;
          addr < base && shown < maxWords;
          addr += risc201::BYTES_PER_WORD, ++shown) {
         try {
             uint32_t value = readWord(addr, pc);
 
+            // Determine the marker string
+            std::string marker;
+            if (addr < sp) {
+                marker = "FREE";
+            } else if (addr == sp) {
+                marker = "<- SP (TOP)";
+            } else if (addr == base - risc201::BYTES_PER_WORD) {
+                marker = "USED (Return Address / Base)"; 
+            } else {
+                marker = "USED";
+            }
+
             out << "  " << hex32(addr)
                 << " | " << hex32(value)
-                << " | " << (addr == sp ? "<- SP (TOP)" : "USED")
+                << " | " << marker
                 << '\n';
+                
         } catch (const SimException&) {
             out << "  " << hex32(addr)
                 << " | <error>    | UNREADABLE\n";
@@ -911,7 +926,7 @@ void CPU::printStackMemory(std::ostream& out, int maxWords) const {
     }
 
     if (shown == maxWords &&
-        static_cast<uint64_t>(sp) +
+        static_cast<uint64_t>(startAddr) +
             static_cast<uint64_t>(shown) * risc201::BYTES_PER_WORD < base) {
         out << "  ... more stack words omitted\n";
     }
