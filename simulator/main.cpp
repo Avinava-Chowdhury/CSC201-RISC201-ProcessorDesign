@@ -2,6 +2,8 @@
 #include "sim_exception.h"
 #include "isa.h"
 #include "../debugger/debugger.h"
+#include "../debugger/timeline.h"
+#include "../debugger/compare.h"
 
 #include <iostream>
 #include <set>
@@ -12,8 +14,11 @@ using namespace std;
 using namespace risc201;
 using namespace debugger;
 
-int main()
+int main(int argc, char** argv)
 {
+    // Batch mode:  ./sim --compare a.hex b.hex ...   (no interactive prompt)
+    if (argc > 1) return runBatch(argc, argv);
+
     CPU cpu;
     cpu.reset();
     set<uint32_t> breakpoints;
@@ -256,6 +261,56 @@ int main()
                 catch (...) { count = 16; }
             }
             printStack(cpu, count > 0 ? count : 16);
+        }
+        else if (command == "diagram")
+        {
+            // diagram [max_instructions] [cycles_per_block]  -- instruction x cycle chart
+            size_t maxInstr = 40, perBlock = 16;
+            string a1, a2;
+            try { if (ss >> a1) maxInstr = stoul(a1); if (ss >> a2) perBlock = stoul(a2); }
+            catch (...) { cout << "Usage: diagram [max_instructions] [cycles_per_block]\n"; continue; }
+            if (maxInstr < 1) maxInstr = 1;
+            if (perBlock < 4) perBlock = 4;
+            printGantt(cpu, maxInstr, perBlock);
+        }
+        else if (command == "cycles")
+        {
+            // cycles [max_rows]  -- cycle x stage table
+            size_t rows = 60;
+            string a1;
+            try { if (ss >> a1) rows = stoul(a1); }
+            catch (...) { cout << "Usage: cycles [max_rows]\n"; continue; }
+            printCycleTable(cpu, rows);
+        }
+        else if (command == "timeline")
+        {
+            string sub, path;
+            if (ss >> sub >> path && sub == "csv")
+            {
+                string err;
+                if (writeTimelineCsv(cpu, path, err)) cout << "Wrote " << cpu.timeline.size() << " cycles to " << path << "\n";
+                else cout << "Error: " << err << "\n";
+            }
+            else cout << "Usage: timeline csv <file.csv>\n";
+        }
+        else if (command == "compare")
+        {
+            // compare <file.hex> [diagram] [clk4_ns clk6_ns]
+            string file, a1;
+            if (!(ss >> file)) { cout << "Usage: compare <file.hex> [diagram] [clk4_ns clk6_ns]\n"; continue; }
+            CompareOptions opt;
+            double c4 = 0, c6 = 0;
+            vector<string> rest;
+            while (ss >> a1) rest.push_back(a1);
+            for (size_t i = 0; i < rest.size(); i++)
+            {
+                if (rest[i] == "diagram") opt.diagram = true;
+                else { try { double v = stod(rest[i]); (c4 == 0 ? c4 : c6) = v; } catch (...) {} }
+            }
+            if (c4 > 0 && c6 > 0) { opt.clk4 = c4; opt.clk6 = c6; }
+            vector<CompareRow> rows;
+            rows.push_back(compareProgram(file, opt));
+            printCompareTable(rows, opt);
         }
         else if (command == "help")
         {
