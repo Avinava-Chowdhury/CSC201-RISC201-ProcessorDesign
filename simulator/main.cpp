@@ -8,6 +8,8 @@
 #include <iostream>
 #include <fstream>
 #include <set>
+#include <map>
+#include <vector>
 #include <sstream>
 #include <string>
 
@@ -17,19 +19,19 @@ using namespace debugger;
 
 int main(int argc, char** argv)
 {
-    // Batch mode:  ./sim --compare a.hex b.hex ...   (no interactive prompt)
     if (argc > 1 && string(argv[1]) != "--script") return runBatch(argc, argv);
 
     CPU cpu;
     cpu.reset();
     set<uint32_t> breakpoints;
+    map<string, uint32_t> symbolMap;
+    map<uint32_t, uint32_t> watchpoints;
     bool utraceEnabled = false;
 
     istream* inStream = &cin;
     ifstream scriptFile;
     bool batchMode = false;
 
-    // Feature: Batch/CSV script execution mode
     if (argc > 2 && string(argv[1]) == "--script")
     {
         scriptFile.open(argv[2]);
@@ -48,16 +50,31 @@ int main(int argc, char** argv)
         cout << "Type 'help' for commands or 'quit' to exit.\n";
     }
 
+    // Lambda to evaluate watchpoints after every tick
+    auto checkWatchpoints = [&]() -> bool {
+        bool triggered = false;
+        for (auto& wp : watchpoints) {
+            try {
+                uint32_t currentVal = cpu.readWord(wp.first, cpu.pc);
+                if (currentVal != wp.second) {
+                    cout << "Watchpoint triggered at address " << hex32(wp.first) 
+                         << "! Value changed from " << hex32(wp.second) 
+                         << " to " << hex32(currentVal) << ".\n";
+                    wp.second = currentVal;
+                    triggered = true;
+                }
+            } catch (...) {}
+        }
+        return triggered;
+    };
+
     string line;
     while (true)
     {
         if (!batchMode) cout << "\n(debug) > ";
         if (!getline(*inStream, line)) break;
 
-        if (batchMode)
-        {
-            cout << "\n(debug) > " << line << "\n";
-        }
+        if (batchMode) cout << "\n(debug) > " << line << "\n";
 
         istringstream ss(line);
         string command;
@@ -73,7 +90,6 @@ int main(int argc, char** argv)
             string filename;
             if (ss >> filename)
             {
-                // Feature: Direct .s File Loading
                 if (filename.length() > 2 && filename.substr(filename.length() - 2) == ".s")
                 {
                     cout << "Auto-assembling " << filename << " in the background...\n";
@@ -85,21 +101,42 @@ int main(int argc, char** argv)
                         cmd = "mingw32-make " + hexfile;
                         system(cmd.c_str());
                     }
-                    filename = hexfile; // Switch to loading the newly generated hex
+                    filename = hexfile;
                 }
 
                 string err;
-                if (cpu.loadHex(filename, err)) cout << "Successfully loaded " << filename << "\n";
+                if (cpu.loadHex(filename, err)) {
+                    cout << "Successfully loaded " << filename << "\n";
+                    
+                    // Feature: Symbol Loading
+                    symbolMap.clear();
+                    string symFilename = filename.substr(0, filename.find_last_of('.')) + ".sym";
+                    ifstream symFile(symFilename);
+                    if (symFile.is_open()) {
+                        string symLine;
+                        int symCount = 0;
+                        while (getline(symFile, symLine)) {
+                            size_t colon = symLine.find(':');
+                            if (colon != string::npos) {
+                                string label = symLine.substr(0, colon);
+                                string addrStr = symLine.substr(colon + 1);
+                                addrStr.erase(0, addrStr.find_first_not_of(" \t"));
+                                uint32_t addr;
+                                if (parseAddress(addrStr, addr)) {
+                                    symbolMap[label] = addr;
+                                    symCount++;
+                                }
+                            }
+                        }
+                        if (symCount > 0) cout << "Loaded " << symCount << " symbols from " << symFilename << "\n";
+                    }
+                }
                 else cout << "Error: " << err << "\n";
             }
-            else
-            {
-                cout << "Usage: load <file.hex | file.s>\n";
-            }
+            else cout << "Usage: load <file.hex | file.s>\n";
         }
         else if (command == "disasm")
         {
-            // Feature: The disasm command
             string arg;
             uint32_t addr;
             if (ss >> arg && parseAddress(arg, addr))
@@ -112,7 +149,6 @@ int main(int argc, char** argv)
         }
         else if (command == "setreg")
         {
-            // Feature: Register Write Command
             string regArg, valArg;
             uint32_t val;
             if (ss >> regArg >> valArg && parseAddress(valArg, val))
@@ -139,7 +175,6 @@ int main(int argc, char** argv)
         }
         else if (command == "setmem")
         {
-            // Feature: Memory Write Command
             string addrArg, valArg;
             uint32_t addr, val;
             if (ss >> addrArg >> valArg && parseAddress(addrArg, addr) && parseAddress(valArg, val))
@@ -153,11 +188,26 @@ int main(int argc, char** argv)
             }
             else cout << "Usage: setmem <addr> <value>\n";
         }
+        else if (command == "watch")
+        {
+            // Feature: Watchpoints
+            string arg;
+            uint32_t addr;
+            if (ss >> arg && parseAddress(arg, addr)) {
+                uint32_t initialVal = 0;
+                try { initialVal = cpu.readWord(addr, cpu.pc); } catch (...) {}
+                watchpoints[addr] = initialVal;
+                cout << "Watchpoint set at " << hex32(addr) << " (current value: " << hex32(initialVal) << ")\n";
+            } else {
+                cout << "Usage: watch <addr>\n";
+            }
+        }
         else if (command == "reset")
         {
             cpu.reset();
             breakpoints.clear();
-            cout << "CPU reset to initial state. Breakpoints cleared.\n";
+            watchpoints.clear();
+            cout << "CPU reset to initial state. Breakpoints and watchpoints cleared.\n";
         }
         else if (command == "step")
         {
@@ -181,8 +231,29 @@ int main(int argc, char** argv)
 
             try
             {
-                uint64_t retired = cpu.runUntilRetire(steps);
-                cout << "Stepped until " << retired << " instruction(s) retired.\n";
+                uint64_t startRetired = cpu.instructionsRetired;
+                uint64_t targetRetired = startRetired + steps;
+                
+                while (cpu.instructionsRetired < targetRetired && !cpu.halted && !cpu.faulted) {
+                    cpu.tick();
+                    if (checkWatchpoints()) {
+                        cout << "Execution paused: watchpoint modified.\n";
+                        break;
+                    }
+                }
+                
+                uint64_t actuallyRetired = cpu.instructionsRetired - startRetired;
+                cout << "Stepped until " << actuallyRetired << " instruction(s) retired.\n";
+                
+                // Feature: Retired Instruction Output
+                if (actuallyRetired > 0) {
+                    uint32_t retiredPc = (cpu.mode == PipelineMode::STAGE_4) ? cpu.ex_memwb.pc : cpu.mem_wb_6.pc;
+                    uint32_t index = retiredPc / 4;
+                    if (index < cpu.instrMem.size()) {
+                        cout << "Retired: " << hex32(retiredPc) << "  " << formatInstruction(cpu.instrMem[index], retiredPc) << "\n";
+                    }
+                }
+
                 printPipeline(cpu);
             }
             catch (const SimException& e)
@@ -222,6 +293,10 @@ int main(int argc, char** argv)
                     }
                     cpu.tick();
                     if (utraceEnabled) printMicro(cpu);
+                    if (checkWatchpoints()) {
+                        cout << "Execution paused: watchpoint modified.\n";
+                        break;
+                    }
                     if (cpu.halted || cpu.faulted) break;
                 }
                 printPipeline(cpu);
@@ -239,13 +314,50 @@ int main(int argc, char** argv)
             {
                 cpu.setMode(m == 4 ? PipelineMode::STAGE_4 : PipelineMode::STAGE_6);
                 breakpoints.clear();
+                watchpoints.clear();
                 cout << "Switched to " << m << "-stage pipeline. CPU reset and breakpoints cleared.\n";
             }
             else cout << "Usage: mode 4|6\n";
         }
         else if (command == "continue")
         {
-            doContinue(cpu, breakpoints);
+            if (cpu.faulted || cpu.halted) {
+                cout << "CPU is halted. Type 'reset' to start over.\n";
+                continue;
+            }
+            
+            int cyclesRun = 0;
+            bool hitBreakpoint = false;
+            bool first = true;
+            
+            while (cyclesRun < 200000 && !cpu.halted && !cpu.faulted) {
+                if (!first && breakpoints.count(cpu.nextExecPC())) {
+                    hitBreakpoint = true;
+                    break;
+                }
+                first = false;
+                
+                try {
+                    cpu.tick();
+                } catch (const SimException& e) {
+                    cout << "\n" << e.report() << "\n";
+                    cout << "CPU halted. Type 'reset' to start over.\n";
+                    break;
+                }
+                
+                cyclesRun++;
+                
+                if (checkWatchpoints()) {
+                    cout << "Execution paused: watchpoint modified after " << cyclesRun << " cycles.\n";
+                    break;
+                }
+            }
+            
+            if (hitBreakpoint) {
+                cout << "Breakpoint hit at " << hex32(cpu.nextExecPC()) << " after " << cyclesRun << " cycle(s).\n";
+            } else if (!cpu.halted && !cpu.faulted && cyclesRun == 200000) {
+                cout << "Stopped after 200000-cycle safety limit.\n";
+            }
         }
         else if (command == "break")
         {
@@ -254,12 +366,8 @@ int main(int argc, char** argv)
             {
                 if (arg == "list")
                 {
-                    if (breakpoints.empty())
-                    {
-                        cout << "No breakpoints set.\n";
-                    }
-                    else
-                    {
+                    if (breakpoints.empty()) cout << "No breakpoints set.\n";
+                    else {
                         cout << "Breakpoints:\n";
                         for (uint32_t addr : breakpoints) cout << "  " << hex32(addr) << "\n";
                     }
@@ -267,21 +375,21 @@ int main(int argc, char** argv)
                 else
                 {
                     uint32_t addr;
-                    if (parseAddress(arg, addr))
+                    // Feature: Break by Label
+                    if (symbolMap.count(arg)) {
+                        addr = symbolMap[arg];
+                        breakpoints.insert(addr);
+                        cout << "Breakpoint set at " << arg << " (" << hex32(addr) << ")\n";
+                    }
+                    else if (parseAddress(arg, addr))
                     {
                         breakpoints.insert(addr);
                         cout << "Breakpoint set at " << hex32(addr) << "\n";
                     }
-                    else
-                    {
-                        cout << "Usage: break <addr> | break list\n";
-                    }
+                    else cout << "Usage: break <addr|label> | break list\n";
                 }
             }
-            else
-            {
-                cout << "Usage: break <addr> | break list\n";
-            }
+            else cout << "Usage: break <addr|label> | break list\n";
         }
         else if (command == "delete")
         {
@@ -292,10 +400,7 @@ int main(int argc, char** argv)
                 if (breakpoints.erase(addr)) cout << "Removed breakpoint at " << hex32(addr) << "\n";
                 else cout << "No breakpoint at " << hex32(addr) << "\n";
             }
-            else
-            {
-                cout << "Usage: delete <addr>\n";
-            }
+            else cout << "Usage: delete <addr>\n";
         }
         else if (command == "pipe")
         {
@@ -359,10 +464,7 @@ int main(int argc, char** argv)
                 }
                 printMemory(cpu, addr, count);
             }
-            else
-            {
-                cout << "Usage: mem <addr> [count]\n";
-            }
+            else cout << "Usage: mem <addr> [count]\n";
         }
         else if (command == "stack")
         {
@@ -378,12 +480,40 @@ int main(int argc, char** argv)
         else if (command == "diagram")
         {
             size_t maxInstr = 40, perBlock = 16;
-            string a1, a2;
-            try { if (ss >> a1) maxInstr = stoul(a1); if (ss >> a2) perBlock = stoul(a2); }
-            catch (...) { cout << "Usage: diagram [max_instructions] [cycles_per_block]\n"; continue; }
+            string a1;
+            bool exportToFile = false;
+            string filename;
+            vector<string> args;
+            
+            while (ss >> a1) args.push_back(a1);
+            
+            for (size_t i = 0; i < args.size(); ++i) {
+                if (args[i] == "export" && i + 1 < args.size()) {
+                    exportToFile = true;
+                    filename = args[i + 1];
+                    i++;
+                } else if (i == 0) {
+                    try { maxInstr = stoul(args[i]); } catch (...) {}
+                } else if (i == 1) {
+                    try { perBlock = stoul(args[i]); } catch (...) {}
+                }
+            }
+
             if (maxInstr < 1) maxInstr = 1;
             if (perBlock < 4) perBlock = 4;
-            printGantt(cpu, maxInstr, perBlock);
+
+            // Feature: Pipeline Diagram Export
+            if (exportToFile) {
+                ofstream outFile(filename);
+                if (outFile.is_open()) {
+                    printGantt(cpu, maxInstr, perBlock, outFile);
+                    cout << "Pipeline diagram exported to " << filename << "\n";
+                } else {
+                    cout << "Error: Could not open " << filename << " for writing.\n";
+                }
+            } else {
+                printGantt(cpu, maxInstr, perBlock);
+            }
         }
         else if (command == "cycles")
         {
