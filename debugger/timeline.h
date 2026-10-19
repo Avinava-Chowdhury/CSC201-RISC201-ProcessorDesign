@@ -5,13 +5,14 @@
 //   printGantt      : one line per instruction, one column per clock cycle (classic textbook chart)
 //   writeTimelineCsv: the same data as a CSV file for a spreadsheet / report
 //
-// Legend used everywhere:   *  = instruction is held in that stage (load-use stall)
-//                           x  = instruction was squashed (fetched on the wrong path of a
-//                                taken branch, or younger than a HALT)
+// Legend used everywhere:    *  = instruction is held in that stage (load-use stall)
+//                            x  = instruction was squashed (fetched on the wrong path of a
+//                                 taken branch, or younger than a HALT)
 
 #include "debugger.h"
 
 #include <fstream>
+#include <iostream>
 #include <map>
 #include <utility>
 #include <vector>
@@ -103,7 +104,7 @@ namespace debugger
                 if (!c.valid) continue;
 
                 int id = -1;
-                if (prevOcc[s] >= 0 && prevTag[s] == 'S') id = prevOcc[s];          // held in place
+                if (prevOcc[s] >= 0 && prevTag[s] == 'S') id = prevOcc[s];         // held in place
                 else if (k > 0)
                 {
                     const int ps = order[k - 1];
@@ -131,18 +132,19 @@ namespace debugger
         return label;
     }
 
-    inline void printGantt(const CPU& cpu, size_t maxInstr = 40, size_t cyclesPerBlock = 16)
+    // Feature: Pipeline Diagram Export Output Parameter
+    inline void printGantt(const CPU& cpu, size_t maxInstr = 40, size_t cyclesPerBlock = 16, std::ostream& out = std::cout)
     {
-        if (cpu.timeline.empty()) { cout << "No cycles recorded yet. Run some cycles first.\n"; return; }
+        if (cpu.timeline.empty()) { out << "No cycles recorded yet. Run some cycles first.\n"; return; }
 
         const vector<Instance> all = buildInstances(cpu);
         const size_t n = min(all.size(), maxInstr);
         const uint64_t lastCycle = cpu.timeline.back().cycle;
 
-        cout << "--- Pipeline diagram (" << (cpu.mode == PipelineMode::STAGE_6 ? "6" : "4")
+        out << "--- Pipeline diagram (" << (cpu.mode == PipelineMode::STAGE_6 ? "6" : "4")
              << "-stage): " << n << " of " << all.size() << " instructions, "
              << lastCycle << " cycles ---\n";
-        cout << "    * = held (load-use stall)   x = squashed (wrong path / after HALT)"
+        out << "    * = held (load-use stall)   x = squashed (wrong path / after HALT)"
              << (cpu.mode == PipelineMode::STAGE_4 ? "   MW = memory + write-back" : "") << "\n";
 
         // Only show blocks that contain at least one cell of the shown instructions
@@ -152,9 +154,9 @@ namespace debugger
         for (uint64_t start = 1; start <= lastShown; start += cyclesPerBlock)
         {
             const uint64_t end = min<uint64_t>(start + cyclesPerBlock - 1, lastShown);
-            cout << "\n" << left << setw(34) << " #  addr    instruction";
-            for (uint64_t c = start; c <= end; c++) cout << setw(5) << c;
-            cout << "\n" << string(34 + 5 * (end - start + 1), '-') << "\n";
+            out << "\n" << left << setw(34) << " #  addr    instruction";
+            for (uint64_t c = start; c <= end; c++) out << setw(5) << c;
+            out << "\n" << string(34 + 5 * (end - start + 1), '-') << "\n";
 
             for (size_t i = 0; i < n; i++)
             {
@@ -165,17 +167,17 @@ namespace debugger
                 if (text.size() > 20) text = text.substr(0, 20);
                 ostringstream label;
                 label << right << setw(3) << in.seq << " " << hex32(in.pc).substr(6) << "  " << left << setw(20) << text;
-                cout << left << setw(34) << label.str();
+                out << left << setw(34) << label.str();
                 for (uint64_t c = start; c <= end; c++)
                 {
                     auto it = in.cells.find(c);
-                    cout << setw(5) << (it == in.cells.end() ? "" : gridCell(cpu.mode, it->second.first, it->second.second));
+                    out << setw(5) << (it == in.cells.end() ? "" : gridCell(cpu.mode, it->second.first, it->second.second));
                 }
-                cout << "\n";
+                out << "\n";
             }
         }
-        if (all.size() > n) cout << "\n(" << all.size() - n << " more instructions not shown; pass a larger limit)\n";
-        if (cpu.timeline.size() >= CPU::TIMELINE_CAP) cout << "(timeline recording stopped after " << CPU::TIMELINE_CAP << " cycles)\n";
+        if (all.size() > n) out << "\n(" << all.size() - n << " more instructions not shown; pass a larger limit)\n";
+        if (cpu.timeline.size() >= CPU::TIMELINE_CAP) out << "(timeline recording stopped after " << CPU::TIMELINE_CAP << " cycles)\n";
     }
 
     // ---- 3. CSV export --------------------------------------------------------------------------
