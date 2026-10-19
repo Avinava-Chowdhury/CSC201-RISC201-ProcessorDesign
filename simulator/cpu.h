@@ -107,6 +107,21 @@ struct StageTrace {
     uint8_t uPC = 0;
 };
 
+// TIMELINE RECORDER (cycle-by-stage pipeline diagram)
+// One row per clock cycle. Slot numbers are fixed for both pipelines:
+//   0 = IF   1 = ID   2 = RR   3 = EX   4 = MEM (4-stage: the combined MEM/WB)   5 = WB
+// The 4-stage pipeline leaves slots 2 and 5 empty.
+struct StageCell {
+    bool     valid = false;   // a real instruction was in this stage this cycle
+    uint32_t pc    = 0;       // address of that instruction
+    char     tag   = ' ';     // ' ' normal | 'S' stalled (held in place) | 'x' squashed (wrong path)
+};
+
+struct CycleRecord {
+    uint64_t  cycle = 0;
+    StageCell cell[6];
+};
+
 // PIPELINED CPU CLASS
 class CPU {
 public:
@@ -155,6 +170,11 @@ public:
     uint8_t curUPC = 0;             // micro-address most recently fetched (for fault reports)
     StageTrace microTrace[MICRO_TRACE_SLOTS];
     bool traceMicro = false;        // when true, the CLI prints the micro state after every tick
+
+    // Timeline recorder: one CycleRecord per tick, used by the 'diagram' / 'cycles' / 'compare' commands
+    bool recordTimeline = true;                 // turn off for fast batch runs
+    static constexpr size_t TIMELINE_CAP = 20000;   // stop recording after this many cycles (memory guard)
+    std::vector<CycleRecord> timeline;
 
     uint32_t nextExecPC() const;
 
@@ -209,4 +229,9 @@ public:
     void do_EX_6();
     void do_MEM_6();
     void do_WB_6();
+
+    // Timeline recorder (see tick())
+    struct InputSnapshot { bool active[6] = {}; uint32_t pc[6] = {}; };
+    InputSnapshot snapshotInputs() const;
+    void recordCycle(const InputSnapshot& pre, bool flushed);
 };
