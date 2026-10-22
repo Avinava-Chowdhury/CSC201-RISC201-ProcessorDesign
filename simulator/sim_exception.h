@@ -6,14 +6,16 @@
 #include <string>
 
 // The different ways the simulated hardware can fault.
+// Khushi: fault kinds for the runtime exception framework. Each name tells the
+// CLI exactly what went wrong (lines 9-16)
 enum class FaultType {
     GENERIC,
-    INVALID_OPCODE,
-    OUT_OF_BOUNDS,
-    MISALIGNED,
-    STACK_OVERFLOW,
-    STACK_UNDERFLOW,
-    STACK_CORRUPTION,
+    INVALID_OPCODE,    // Khushi: decoder met an opcode that doesn't exist
+    OUT_OF_BOUNDS,     // Khushi: load/store outside the 64 KB data memory
+    MISALIGNED,        // Khushi: sp or a word access not a multiple of 4
+    STACK_OVERFLOW,    // Khushi: sp about to go below 0xC000 (stack full)
+    STACK_UNDERFLOW,   // Khushi: sp above 0x10000, or a pop on an empty stack
+    STACK_CORRUPTION,  // Khushi: store below sp, inside the stack area
     // --- New Faults ---
     DIV_BY_ZERO,
     ARITHMETIC_OVERFLOW,
@@ -24,6 +26,7 @@ enum class FaultType {
     ILLEGAL_MICROINSTRUCTION
 };
 
+// Khushi: turns a FaultType into the name shown in the fault report 
 inline const char* faultName(FaultType type) {
     switch (type) {
         case FaultType::GENERIC: return "GENERIC";
@@ -44,16 +47,18 @@ inline const char* faultName(FaultType type) {
     }
 }
 
-// 32-bit value as 0x0000abcd, used in fault messages
+// Khushi: formats a value as 0x0000abcd so addresses in fault messages line up 
 inline std::string hex32(uint32_t value) {
     std::ostringstream out;
     out << "0x" << std::hex << std::setw(8) << std::setfill('0') << value;
     return out.str();
 }
 
-// SimException acts as our hardware fault trigger.
+// Khushi: base of the runtime exception framework. Carries the fault kind, the PC of
+// the faulting instruction and the bad address for the report 
 class SimException : public std::runtime_error { // inherits from runtime error
 private:
+// Khushi: fault details: kind, PC, and the bad address (only if there is one) 
     FaultType faultType;
     uint32_t pc = 0;
     uint32_t badAddress = 0;
@@ -76,19 +81,21 @@ public:
     explicit SimException(const std::string& message)
         : std::runtime_error(message), faultType(FaultType::GENERIC), pc(0) {}
 
+// Khushi: typed fault: kind, message and the PC of the faulting instruction
     SimException(FaultType type, const std::string& message, uint32_t faultPc = 0)
         : std::runtime_error(message), faultType(type), pc(faultPc) {}
 
-    // attach the bad address, used like: throw SimException(...).withAddress(a);
+    // Khushi: attaches the bad address; used as throw SimException(...).withAddress(a);
     SimException& withAddress(uint32_t address) {
         badAddress = address;
         hasAddress = true;
         return *this;
     }
 
+    // Khushi: lets the caller check which kind of fault it was
     FaultType type() const { return faultType; }
 
-    // Store execution context details
+   // Khushi: records where the fault happened (stage, cycle, microPC) for the report
     void setContext(const char* stage, uint64_t cycle, uint8_t upc, const char* mode) {
         stage_ = stage ? stage : "UNKNOWN";
         cycle_ = cycle;
@@ -103,7 +110,7 @@ public:
         hasContext = true;
     }
 
-    // multi-line description for the CLI
+   // Khushi: builds the fault report the CLI prints when the CPU halts
     std::string report() const {
         std::ostringstream out;
         out << "*** HARDWARE FAULT: " << faultName(faultType) << " ***\n"
