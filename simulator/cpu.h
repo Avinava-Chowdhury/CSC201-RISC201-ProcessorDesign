@@ -10,9 +10,10 @@
 #include "horizontal_microcode.h"
 #include "vertical_microcode.h"
 
-// POISON RECORD: a fault found while decoding/fetching on a possibly wrong path.
-// It travels with the instruction and is only raised if the instruction survives
-// to the commit point (a flushed wrong-path instruction never faults).
+/* Khushi :
+ POISON RECORD: a fault found while decoding/fetching on a possibly wrong path.
+ It travels with the instruction and is only raised if the instruction survives
+ to the commit point (a flushed wrong-path instruction never faults). */
 struct PendingFault {
     bool pending = false;
     FaultType type = FaultType::GENERIC;
@@ -26,7 +27,8 @@ struct IF_ID_Latch {
     bool active = false; 
     uint32_t pc = 0;
     uint32_t instruction = 0;
-    PendingFault pf;                     // deferred fetch/decode fault (poison)
+    // in IF_ID_Latch 
+    PendingFault pf;                      // Khushi: deferred fetch/decode fault
 };
 
 struct ID_EX_Latch {
@@ -45,7 +47,9 @@ struct EX_MEMWB_Latch {
     uint32_t pc = 0;            
     uint8_t uPC = 0;                     // micro-address of this instruction's next microword
     uint8_t dest_reg = 0;
-    uint8_t base_reg = 0;                // rs1 of the instruction (to detect loads/stores through sp)
+    // in EX_MEMWB_Latch and EX_MEM_Latch
+    uint8_t base_reg = 0;                // Khushi: base register of the load/store, so a load through sp (pop) can be spotted
+
     int32_t alu_result = 0;
     int32_t store_data = 0;              // Raw value of rs1 to store (for ST)
 };
@@ -142,7 +146,8 @@ public:
     int32_t reg[16]; 
     uint32_t pc;
     risc201::ProcessorFlags flags;
-    bool faulted = false;   // set when a hardware fault stops the CPU
+    // in class CPU
+    bool faulted = false;   // Khushi: set when a hardware fault stops the CPU until reset
     bool halted = false;    // set when a HALT instruction retires
     bool fetchStopped = false;  // set when HALT executes: stop fetching, let the pipeline drain
     bool stallRequest = false;  // set by a stage that needs the front of the pipe to hold this cycle
@@ -217,16 +222,18 @@ public:
     int32_t memCore(const MicroWord& w, uint32_t pc, uint8_t baseReg, int32_t aluResult, int32_t storeData);
     void    wbCore(const MicroWord& w, uint32_t pc, uint8_t destReg, int32_t value);
 
-    // Checked data memory access (throws SimException on a bad address)
-    void checkWordAccess(uint32_t addr, uint32_t faultPc) const;
-    uint32_t readWord(uint32_t addr, uint32_t faultPc) const;
-    void writeWord(uint32_t addr, uint32_t value, uint32_t faultPc);
+    // Khushi: checked data memory access; bad addresses throw a SimException
+    void checkWordAccess(uint32_t addr, uint32_t faultPc) const;   // bounds + alignment
+    uint32_t readWord(uint32_t addr, uint32_t faultPc) const;      // checked load
+    void writeWord(uint32_t addr, uint32_t value, uint32_t faultPc);  // checked store
     
-    // Stack safety checks (throw SimException when something is wrong)
+    // Khushi: stack safety checks. sp must stay aligned and inside the stack area
     void checkStackPointer(uint32_t newSP, uint32_t faultPc) const;
+
     // ASCII stack memory visualizer
     void printStackMemory(std::ostream& out, int maxWords = 16) const;
 
+    // Khushi: stack corruption guard: stores below sp are rejected
     void checkStackWrite(uint32_t addr, uint32_t faultPc) const;
 
     // Pipeline stages 
