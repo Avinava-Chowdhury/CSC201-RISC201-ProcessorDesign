@@ -539,6 +539,24 @@ uint32_t encode(const DecodedInstruction& instr)
     return convertToBinary(instr);
 }
 
+
+bool isWordDirective(const std::vector<std::string>& tokens)
+{
+    return !tokens.empty() && toLower(tokens[0]) == ".word";
+}
+
+uint32_t parseWordDirective(const std::vector<std::string>& tokens)
+{
+    if (tokens.size() != 2)
+        throw std::invalid_argument(".word: expected exactly one number");
+    if (!looksLikeNumber(tokens[1]))
+        throw std::invalid_argument(".word: operand must be a number, got '" + tokens[1] + "'");
+    const int64_t value = parseInteger(tokens[1], tokens[1]);
+    if (value < INT32_MIN || value > static_cast<int64_t>(UINT32_MAX))
+        throw std::out_of_range(".word: " + tokens[1] + " does not fit in 32 bits");
+    return static_cast<uint32_t>(value);
+}
+
 // =======================================================================
 // Macro expansion (PUSH / POP / LI)
 // =======================================================================
