@@ -63,7 +63,12 @@ bool Assembler::assemble()
         for (const auto& line : expandedLines) {
 
             // Convert assembly text into tokens.
-            auto tokens = tokenizeLine(line);
+            vector<string> tokens;
+            try {
+                tokens = tokenizeLine(line);
+            } catch (const exception& e) {
+                throw runtime_error(string(e.what()) + "  [at: " + line + "]");
+            }
 
             // Blank/comment-only line.
             if (tokens.empty()) {
@@ -80,11 +85,12 @@ bool Assembler::assemble()
             }
 
             // Convert tokens into a decoded instruction.
-            auto instr = buildInstruction(
-                tokens,
-                addr,
-                symbolTable
-            );
+            DecodedInstruction instr;
+            try {
+                instr = buildInstruction(tokens, addr, symbolTable);
+            } catch (const exception& e) {
+                throw runtime_error(string(e.what()) + "  [at: " + line + "]");
+            }
 
             // Convert the decoded instruction into the final 32-bit machine word.
             uint32_t word = encode(instr);
