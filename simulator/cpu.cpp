@@ -13,7 +13,7 @@
 
 namespace {
 
-// Raise a fault that was parked in a latch (poison record) as a real SimException.
+// Khushi: delivers a fault parked in a latch as a real SimException
 [[noreturn]] void raisePending(const PendingFault& pf, uint32_t faultPc) {
     SimException e(pf.type, pf.msg, faultPc);
     if (pf.hasAddr) e.withAddress(pf.addr);
@@ -33,8 +33,10 @@ void CPU::reset() {
     for (int i = 0; i < 16; i++) {
         reg[i] = 0;
     }
-    // sp (r14) starts at 0x10000 since stack grows downwards
+    
+// Khushi: sp starts at the empty-stack address 0x10000; every overflow/underflow check is relative to it
     reg[risc201::STACK_POINTER_REG_INDEX] = risc201::STACK_STARTING_ADDRESS; 
+    
     totalCycles = 0;
     timeline.clear();
     instructionsRetired = 0;
@@ -46,7 +48,7 @@ void CPU::reset() {
     // Clear flags
     flags.IsEqual = false;
     flags.IsGreaterThan = false;
-    faulted = false;
+    faulted = false; // Khushi: 'reset' clears the fault so the CPU can run again
     halted = false;
     fetchStopped = false;
     stallRequest = false;
@@ -214,6 +216,7 @@ risc201::DecodedInstruction CPU::decodeChecked(uint32_t word, uint32_t /*pc*/, P
 
     auto decodedOpt = risc201::convertFromBinary(word);
     if (!decodedOpt.has_value()) {
+        // Khushi: an undefined opcode becomes an INVALID_OPCODE fault, not a crash
         flag(FaultType::INVALID_OPCODE, "undefined opcode in instruction word " + hex32(word));
         return risc201::DecodedInstruction{};
     }
@@ -387,7 +390,10 @@ void CPU::do_EX() {
     ex_memwb.pc = id_ex.pc;
     ex_memwb.uPC = out.nextUPC;
     ex_memwb.dest_reg = out.dest;
+    
+    // Khushi: pass the base register on, so memCore can tell a pop (load through sp) from other loads
     ex_memwb.base_reg = id_ex.decoded.sourceRegister1;
+    
     ex_memwb.alu_result = out.value;
     
     // If store instruction, the value we want to write into RAM was read as val3 (rd)
@@ -475,7 +481,8 @@ ExOut CPU::execCore(const risc201::DecodedInstruction& d, uint32_t pc, uint8_t u
     return out;
 }
 
-// Data memory access helpers
+// Khushi: memory protection: every load/store passes this check for the 64 KB bounds
+// and 4-byte alignment
 void CPU::checkWordAccess(uint32_t addr, uint32_t faultPc) const {
     if (static_cast<uint64_t>(addr) + risc201::BYTES_PER_WORD > dataMem.size()) {
         throw SimException(FaultType::OUT_OF_BOUNDS,
@@ -580,11 +587,15 @@ void CPU::do_EX_6() {
     ex_mem.pc = rr_ex.pc;
     ex_mem.uPC = out.nextUPC;
     ex_mem.dest_reg = out.dest;
+
+    // Khushi: pass the base register on, so memCore can tell a pop (load through sp) from other loads
     ex_mem.base_reg = rr_ex.decoded.sourceRegister1;
+    
     ex_mem.alu_result = out.value;
     ex_mem.store_data = rr_ex.val3;
 }
 
+// Khushi: checked 32-bit load, little endian; a bad address faults here 
 uint32_t CPU::readWord(uint32_t addr, uint32_t faultPc) const {
     checkWordAccess(addr, faultPc);
     // little endian
@@ -596,6 +607,7 @@ uint32_t CPU::readWord(uint32_t addr, uint32_t faultPc) const {
     return value;
 }
 
+// Khushi: checked 32-bit store, little endian; a bad address faults here
 void CPU::writeWord(uint32_t addr, uint32_t value, uint32_t faultPc) {
     checkWordAccess(addr, faultPc);
     dataMem[addr]     = value & 0xFF;
@@ -604,6 +616,7 @@ void CPU::writeWord(uint32_t addr, uint32_t value, uint32_t faultPc) {
     dataMem[addr + 3] = (value >> 24) & 0xFF;
 }
 
+// Khushi: stack boundary safety check on sp (alignment, overflow, underflow); it runs before sp is written back
 // Stack pointer safeguard: sp must stay word aligned and inside [STACK_LOWEST_LIMIT, STACK_STARTING_ADDRESS]. 
 //The stack is full descending, so going under the floor is an overflow and going above the start is an underflow (popping more than was pushed).
 void CPU::checkStackPointer(uint32_t newSP, uint32_t faultPc) const {
@@ -628,7 +641,7 @@ void CPU::checkStackPointer(uint32_t newSP, uint32_t faultPc) const {
     }
 }
 
-// Stores into the stack segment must not land below sp. 
+// Khushi: stack corruption guard: a store into the stack area below sp raises STACK_CORRUPTION
 // Everything under sp is free space in a full descending stack, 
 // so a write there means a bad pointer or a skipped sp update and would corrupt later pushes.
 void CPU::checkStackWrite(uint32_t addr, uint32_t faultPc) const {
@@ -643,7 +656,7 @@ void CPU::checkStackWrite(uint32_t addr, uint32_t faultPc) const {
     }
 }
 
-// Shared memory-access core: performs the LD / ST selected by the MEM word.
+// Khushi: all LD/ST protection lives here, so the 4-stage and 6-stage pipelines share it
 // Returns the value that continues to writeback (loaded word, or the ALU result).
 int32_t CPU::memCore(const MicroWord& w, uint32_t pc, uint8_t baseReg,
                      int32_t aluResult, int32_t storeData) {
@@ -652,7 +665,8 @@ int32_t CPU::memCore(const MicroWord& w, uint32_t pc, uint8_t baseReg,
 
     // 1. Memory Read (LD)
     if (w.memRead) {
-        // a load through sp from the empty-stack address or above is a pop on an empty stack
+        
+        // Khushi: pop on an empty stack: load through sp at/above 0x10000 raises STACK_UNDERFLOW
         if (baseReg == risc201::STACK_POINTER_REG_INDEX &&
             memAddr >= risc201::STACK_STARTING_ADDRESS) {
             throw SimException(FaultType::STACK_UNDERFLOW,
@@ -666,18 +680,19 @@ int32_t CPU::memCore(const MicroWord& w, uint32_t pc, uint8_t baseReg,
 
     // 2. Memory Write (ST)
     if (w.memWrite) {
-        checkWordAccess(memAddr, pc);   // alignment/bounds first
+         // Khushi: ST protection: bounds/alignment first, then the below-sp stack guard
+        checkWordAccess(memAddr, pc);
+        
         checkStackWrite(memAddr, pc);
         writeWord(memAddr, static_cast<uint32_t>(storeData), pc);
     }
     return value;
 }
 
-// Shared writeback core: stack-pointer safeguard, register write, retirement, HALT.
+// Khushi: writeback core: sp is checked before the register write 
 void CPU::wbCore(const MicroWord& w, uint32_t pc, uint8_t destReg, int32_t value) {
     if (w.regWrite) {
-        // look at the new sp BEFORE it lands in the register, so a faulting
-        // instruction never leaves sp pointing somewhere illegal
+        // Khushi: a bad sp is never stored; the fault fires first and sp keeps its old value
         if (destReg == risc201::STACK_POINTER_REG_INDEX) {
             checkStackPointer(static_cast<uint32_t>(value), pc);
         }
@@ -735,7 +750,8 @@ void CPU::do_WB_6() {
 
 // Clock Cycle Stepping in reverse 
 void CPU::tick() {
-    // a faulted or halted CPU stays frozen until reset()
+    
+    // Khushi: a faulted CPU stays frozen until reset
     if (faulted || halted) return;
 
     for (auto& t : microTrace) t = StageTrace{};
@@ -777,11 +793,14 @@ void CPU::tick() {
 
         // a taken branch or a HALT in EX squashed the younger instructions this cycle
         if (rec) recordCycle(pre, branchFlushes > flushesBefore || (fetchStopped && !fetchStoppedBefore));
+        
+    // Khushi: on any fault, freeze the CPU, attach the stage/cycle/microPC, and rethrow
+    // so the CLI can print the report
     } catch (SimException& e) {
         faulted = true;
         e.setContext(curStage, totalCycles, curUPC,
                      mode == PipelineMode::STAGE_6 ? "6-stage" : "4-stage");
-        throw;   // let the CLI print the report
+        throw;   
     }
 }
 
