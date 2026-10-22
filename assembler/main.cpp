@@ -4,13 +4,25 @@
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cout << "Usage: " << argv[0] << " <input.s> <output_file> [--hex]\n";
+        std::cout << "Usage: " << argv[0] << " <input.s> <output_file> [--hex] [--sym <symbols.txt>]\n";
         return 1;
     }
 
     std::string inputPath = argv[1];
     std::string outputPath = argv[2];
-    bool asHex = (argc > 3 && std::string(argv[3]) == "--hex");
+    bool asHex = false;
+std::string symPath;
+for (int i = 3; i < argc; ++i) {
+    std::string flag = argv[i];
+    if (flag == "--hex") {
+        asHex = true;
+    } else if (flag == "--sym" && i + 1 < argc) {
+        symPath = argv[++i];
+    } else {
+        std::cerr << "Unknown or incomplete option: " << flag << "\n";
+        return 1;
+    }
+}
 
     Assembler assembler;
 
@@ -21,7 +33,7 @@ int main(int argc, char* argv[]) {
     if (!assembler.assemble()) return 1;
 
     std::cout << "Writing output to " << outputPath << "...\n";
-    if (!assembler.writeOutput(outputPath, asHex)) return 1;
+   if (!symPath.empty() && !assembler.writeSymbolTable(symPath)) return 1;
 
     std::cout << "Done! Assembly successful.\n";
     return 0;
