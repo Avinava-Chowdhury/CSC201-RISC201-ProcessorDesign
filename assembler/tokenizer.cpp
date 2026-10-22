@@ -88,7 +88,7 @@ std::vector<std::string> tokenizeLine(const std::string& line)
 
     // Check every other token that looks like a register actually is one
     for (size_t i = instructionStart + 1; i < tokens.size(); i++) {
-        bool looksLikeNumber = isdigit((unsigned char)tokens[i][0]) || tokens[i][0] == '-';
+        bool looksLikeNumber = isdigit((unsigned char)tokens[i][0]) || tokens[i][0] == '-' || tokens[i][0] == '+';
         if (!looksLikeNumber) {
             int reg = parseRegisterName(tokens[i]);
             if (reg < 0) {
