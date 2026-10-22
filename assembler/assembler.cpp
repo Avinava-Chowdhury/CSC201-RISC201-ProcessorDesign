@@ -100,10 +100,10 @@ bool Assembler::assemble()
             // Every instruction is 4 bytes.
             addr += BYTES_PER_WORD;
         }
-    // Instruction memory holds only 4096 words.
-        if (machineCode.size() > 4096) {
+            constexpr size_t MAX_PROGRAM_WORDS = INSTRUCTION_MEMORY_SIZE / BYTES_PER_WORD;
+        if (machineCode.size() > MAX_PROGRAM_WORDS) {
             throw runtime_error("program is " + to_string(machineCode.size()) +
-                                " words; instruction memory holds only 4096");
+                                " words; instruction memory holds only " + to_string(MAX_PROGRAM_WORDS));
         }
     } catch (const exception& e) {
 
