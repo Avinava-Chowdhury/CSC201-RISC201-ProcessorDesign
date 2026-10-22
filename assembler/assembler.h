@@ -19,7 +19,7 @@ public:
     // Write machine code as binary or hexadecimal text
     bool writeOutput(const std::string& outPath, bool asHex = false);
 
-    // Export the symbol table for the simulator[cite: 7]
+    // Export the symbol table for the simulator
     bool writeSymbolTable(const std::string& symPath);
 
 private:
