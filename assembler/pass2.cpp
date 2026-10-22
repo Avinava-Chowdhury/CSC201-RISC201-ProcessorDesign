@@ -277,6 +277,10 @@ namespace
             {
                 throw std::invalid_argument("push: expected exactly one register operand");
             }
+            if (toLower(tokens[1]) == "sp" || toLower(tokens[1]) == "r14")
+            {
+                throw std::invalid_argument("push: sp cannot be the operand (the macro itself changes sp)");
+            }
             return {
                 { "sub", "sp", "sp", "4" },       // move the stack pointer down by 4 bytes
                 { "st", tokens[1], "0[sp]" }      // store the register at the new top of stack
@@ -288,6 +292,10 @@ namespace
             if (tokens.size() != 2)
             {
                 throw std::invalid_argument("pop: expected exactly one register operand");
+            }
+            if (toLower(tokens[1]) == "sp" || toLower(tokens[1]) == "r14")
+            {
+                throw std::invalid_argument("pop: sp cannot be the operand (the macro itself changes sp)");
             }
             return {
                 { "ld", tokens[1], "0[sp]" },     // load the value at the top of stack
