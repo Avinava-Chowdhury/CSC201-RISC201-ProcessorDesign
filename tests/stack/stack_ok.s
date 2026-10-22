@@ -15,3 +15,4 @@
     nop
     nop
     nop
+    halt
