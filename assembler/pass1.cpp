@@ -1,6 +1,7 @@
 #include "pass1.h"
 #include "tokenizer.h"
 #include "isa.h"
+#include <exception>
 #include <stdexcept>
 #include <string>
 
@@ -76,7 +77,12 @@ std::map<std::string, uint32_t> buildSymbolTable(const std::vector<std::string>&
     uint32_t currentAddress = 0; // Tracks memory map natively without tracking .data/.word
 
     for (const std::string& line : rawLines) {
-        std::vector<std::string> tokens = tokenizeLine(line);
+        std::vector<std::string> tokens;
+        try {
+            tokens = tokenizeLine(line);
+        } catch (const std::exception& e) {
+            throw std::invalid_argument(std::string(e.what()) + "  [at: " + line + "]");
+        }
 
         if (tokens.empty()) {
             continue;
