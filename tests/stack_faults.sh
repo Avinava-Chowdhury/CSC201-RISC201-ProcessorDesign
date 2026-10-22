@@ -51,8 +51,8 @@ fi
 run_case stack_overflow    "STACK_OVERFLOW"   "r14: 0x0000c000"
 run_case stack_underflow   "STACK_UNDERFLOW"  "r14: 0x00010000"
 run_case stack_misaligned  "MISALIGNED"       "r14: 0x00010000"
-run_case stack_corrupt     "STACK_CORRUPTION" "address : 0x0000fffc"
-run_case stack_oob         "OUT_OF_BOUNDS"    "address : 0x00020000"
+run_case stack_corrupt     "STACK_CORRUPTION" "address : 0xfffc"
+run_case stack_oob         "OUT_OF_BOUNDS"    "address : 0x20000"
 run_case div_zero          "DIV_BY_ZERO"
 run_case invalid_opcode    "INVALID_OPCODE"
 
