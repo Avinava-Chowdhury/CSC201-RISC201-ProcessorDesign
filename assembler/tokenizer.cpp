@@ -59,6 +59,14 @@ std::vector<std::string> tokenizeLine(const std::string& line)
         c = (char)tolower((unsigned char)c);
     }
 
+     // ".word <number>" is a data directive (one raw 32-bit word), not an instruction.
+    if (mnemonic == ".word") {
+        if (tokens.size() != instructionStart + 2) {
+            throw std::invalid_argument(".word: expected exactly one number");
+        }
+        return tokens;
+    }
+    
     // Make sure the instruction name is real
     const OperationDetails* details = findByAssemblyText(mnemonic);
     if (!details) {
