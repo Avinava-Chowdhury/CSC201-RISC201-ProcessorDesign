@@ -8,6 +8,8 @@
 #include <iostream>
 #include <iomanip>
 #include <exception>
+#include <stdexcept>
+#include <string>
 
 using namespace std;
 using namespace risc201;
@@ -92,7 +94,11 @@ bool Assembler::assemble()
             // Every instruction is 4 bytes.
             addr += BYTES_PER_WORD;
         }
-
+    // Instruction memory holds only 4096 words.
+        if (machineCode.size() > 4096) {
+            throw runtime_error("program is " + to_string(machineCode.size()) +
+                                " words; instruction memory holds only 4096");
+        }
     } catch (const exception& e) {
 
         cerr << "Assembly Error: " << e.what() << "\n";
