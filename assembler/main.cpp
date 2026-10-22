@@ -33,7 +33,8 @@ for (int i = 3; i < argc; ++i) {
     if (!assembler.assemble()) return 1;
 
     std::cout << "Writing output to " << outputPath << "...\n";
-   if (!symPath.empty() && !assembler.writeSymbolTable(symPath)) return 1;
+    if (!assembler.writeOutput(outputPath, asHex)) return 1;
+    if (!symPath.empty() && !assembler.writeSymbolTable(symPath)) return 1;
 
     std::cout << "Done! Assembly successful.\n";
     return 0;
