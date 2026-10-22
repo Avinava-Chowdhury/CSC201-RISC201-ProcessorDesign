@@ -182,6 +182,17 @@ namespace
         return true;
     }
 
+    void parseMemoryOffset(const std::string& mnemonic, const std::string& offsetPart,
+                           uint16_t& rawValueOut, ImmediateModifier& modifierOut)
+    {
+        parseImmediate(offsetPart, rawValueOut, modifierOut);
+        if (modifierOut != ImmediateModifier::SIGNED)
+        {
+            throw std::invalid_argument(
+                mnemonic + ": memory offset must be a plain signed number (no u/h suffix): " + offsetPart);
+        }
+    }
+
     void requireArgCount(const std::string& mnemonic, const std::vector<std::string>& tokens, size_t expected)
     {
         if (tokens.size() != expected)
@@ -496,7 +507,7 @@ DecodedInstruction buildInstruction(
         }
         instr.sourceRegister1 = static_cast<uint8_t>(registerIndexOrThrow(regPart));
         instr.usesConstantNumber = true;  // LD/ST always carry an immediate offset.
-        parseImmediate(offsetPart, instr.rawConstantValue, instr.constantModifier);
+        parseMemoryOffset(mnemonic, offsetPart, instr.rawConstantValue, instr.constantModifier);
         break;
     }
 
@@ -515,7 +526,7 @@ DecodedInstruction buildInstruction(
         }
         instr.sourceRegister1 = static_cast<uint8_t>(registerIndexOrThrow(regPart));
         instr.usesConstantNumber = true;
-        parseImmediate(offsetPart, instr.rawConstantValue, instr.constantModifier);
+        parseMemoryOffset(mnemonic, offsetPart, instr.rawConstantValue, instr.constantModifier);
         break;
     }
     }
