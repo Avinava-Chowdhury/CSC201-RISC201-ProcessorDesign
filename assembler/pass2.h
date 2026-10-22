@@ -25,6 +25,9 @@ risc201::DecodedInstruction buildInstruction(
 // Packs a DecodedInstruction into the final 32-bit machine word.
 uint32_t encode(const risc201::DecodedInstruction& instr);
 
+bool     isWordDirective(const std::vector<std::string>& tokens);
+uint32_t parseWordDirective(const std::vector<std::string>& tokens);
+
 // Expands the macros PUSH / POP / LI into real instructions, working on RAW
 // TEXT LINES. This must run BEFORE tokenizeLine() and buildSymbolTable(),
 // because the tokenizer rejects macro names as unknown instructions, and
