@@ -84,6 +84,17 @@ bool Assembler::assemble()
                 continue;
             }
 
+            // ".word N": raw data word, copied straight into the output.
+            if (isWordDirective(tokens)) {
+                try {
+                    machineCode.push_back(parseWordDirective(tokens));
+                } catch (const exception& e) {
+                    throw runtime_error(string(e.what()) + "  [at: " + line + "]");
+                }
+                addr += BYTES_PER_WORD;
+                continue;
+            }
+            
             // Convert tokens into a decoded instruction.
             DecodedInstruction instr;
             try {
