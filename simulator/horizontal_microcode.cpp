@@ -65,7 +65,11 @@ namespace {
         { OperationCode::MIN,  1, 1, 0, 0, 0,  1, OperationCode::MIN,  0,   0,   0,   BranchControl::NONE,    0,    0,      0,    0,  0,  1,  0 },
         { OperationCode::MAX,  1, 1, 0, 0, 0,  1, OperationCode::MAX,  0,   0,   0,   BranchControl::NONE,    0,    0,      0,    0,  0,  1,  0 },
         
-        { OperationCode::HALT, 0, 0, 0, 0, 0,  0, OperationCode::NOP,  0,   0,   0,   BranchControl::NONE,    0,    0,      1,    0,  0,  0,  1 }
+        { OperationCode::HALT, 0, 0, 0, 0, 0,  0, OperationCode::NOP,  0,   0,   0,   BranchControl::NONE,    0,    0,      1,    0,  0,  0,  1 },
+
+        // Floating point: fadd/fsub/fmul/fdiv. The function (bits [13:12]) travels with the decoded instruction.
+        // No traps: IEEE-754 says x/0 = inf, overflow = inf, invalid = NaN (flagged by the ALU, not trapped).
+        { OperationCode::FPU,  1, 1, 0, 0, 0,  1, OperationCode::FPU,  0,   0,   0,   BranchControl::NONE,    0,    0,      0,    0,  0,  1,  0 }
     };
 
     // ADDITION: Helper Functions for Word Creation (Available for future use)
@@ -253,7 +257,7 @@ std::string describe(const MicroWord& word) {
     // EX controls: ALU operation, flags, traps, branch type, link / stop-fetch
     if (word.aluEnable) {
         const OperationDetails* d = findByOpcodeId(word.aluOp);
-        out << "ALU=" << (d ? d->nameInAssembly : "?") << " ";
+        out << "ALU=" << (word.aluOp == OperationCode::FPU ? "fpu" : (d ? d->nameInAssembly : "?")) << " ";
     }
     if (word.updateFlags)  out << "updFlg ";
     if (word.trapDivZero)  out << "trapDiv0 ";
