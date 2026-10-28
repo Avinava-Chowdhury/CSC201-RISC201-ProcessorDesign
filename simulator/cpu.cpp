@@ -223,7 +223,13 @@ risc201::DecodedInstruction CPU::decodeChecked(uint32_t word, uint32_t /*pc*/, P
     risc201::DecodedInstruction d = decodedOpt.value();
 
     const risc201::OperationDetails* details = risc201::findByOpcodeId(d.operation);
-    if (details != nullptr && details->layoutFormat == risc201::InstructionLayout::OPERATE) {
+        if (details != nullptr && d.operation == risc201::OperationCode::FPU) {
+        // floating point: register form only; bits [13:12] hold the function, bits [11:0] are reserved
+        if (d.usesConstantNumber)
+            flag(FaultType::ILLEGAL_INSTRUCTION, "floating-point instructions have no immediate form " + hex32(word));
+        else if ((word & 0x0FFFu) != 0)
+            flag(FaultType::ILLEGAL_INSTRUCTION, "reserved bits [11:0] set in instruction word " + hex32(word));
+    } else if (details != nullptr && details->layoutFormat == risc201::InstructionLayout::OPERATE) {
         if (details->assemblyFormat == risc201::AssemblySyntax::NO_ARGS) {
             // nop / ret / halt: everything below the opcode is reserved
             if ((word & 0x07FFFFFFu) != 0)
@@ -414,7 +420,7 @@ ExOut CPU::execCore(const risc201::DecodedInstruction& d, uint32_t pc, uint8_t u
         throw SimException(FaultType::DIV_BY_ZERO, "division by zero", pc);
     }
     if (w.aluEnable) {
-        risc201::ALUResult aluOut = alu.execute(w.aluOp, a, b);
+        risc201::ALUResult aluOut = alu.execute(w.aluOp, a, b, d.fpuFunction);
         if (w.trapOverflow && aluOut.flags.overflow) {
             throw SimException(FaultType::ARITHMETIC_OVERFLOW, "arithmetic overflow", pc);
         }
