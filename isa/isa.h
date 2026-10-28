@@ -45,8 +45,21 @@ enum class OperationCode : uint8_t
     NEG = 21, ABS = 22, MIN = 23, MAX = 24,
     ROL = 25, ROR = 26,
     XOR = 27,
-    HALT = 28
+    HALT = 28,
+    FPU = 29    // floating-point unit: fadd/fsub/fmul/fdiv share this opcode 
+    // 30 and 31 are deliberately left undefined so INVALID_OPCODE can still be raised (0xFFFFFFFF)
 };
+
+// Floating-point function select (IEEE-754 binary32).
+// The FPU opcode is followed, in the register form only, by a 2-bit function code stored in
+// instruction bits [13:12] (these bits were reserved/zero for every other register-form instruction).
+//   fadd rd, rs1, rs2   -> function 0
+//   fsub rd, rs1, rs2   -> function 1
+//   fmul rd, rs1, rs2   -> function 2
+//   fdiv rd, rs1, rs2   -> function 3
+enum class FpuFunction : uint8_t { FADD = 0, FSUB = 1, FMUL = 2, FDIV = 3 };
+constexpr uint32_t FPU_FUNCTION_SHIFT = 12;
+constexpr uint32_t FPU_FUNCTION_MASK  = 0x3u;
 
 using Opcode = OperationCode;
 // Instruction Layouts
@@ -102,11 +115,15 @@ struct OperationDetails {
     InstructionLayout  layoutFormat;
     AssemblySyntax     assemblyFormat;
     bool               allowsUorHSuffix; 
+    uint8_t            function = 0;   // FPU function code (only meaningful when opCodeId == FPU)
 };
 
 const OperationDetails* findByAssemblyText(const std::string& nameInAssembly); 
 const OperationDetails* findByOpcodeId(uint8_t numericOpcodeId);                  
 const OperationDetails* findByOpcodeId(OperationCode opCodeId);
+// Like findByOpcodeId, but also selects the FPU function (fadd/fsub/fmul/fdiv). For every
+// non-FPU opcode the function argument is ignored.
+const OperationDetails* findByOpcodeAndFunction(OperationCode opCodeId, uint8_t function);
 
 
 // The Decoded Instruction
@@ -124,6 +141,8 @@ struct DecodedInstruction {
     uint16_t          rawConstantValue = 0;       // The raw 16-bit number from the instruction
     
     int32_t           branchJumpDistance = 0;     // How far to jump for BRANCH layouts
+
+    uint8_t           fpuFunction = 0;            // FpuFunction code (FPU opcode only, instruction bits [13:12])
 
     // Example proof: If rawConstantValue is 0xFFFF (-1 in 16-bit signed) and modifier is SIGNED, 
     // this function expands it to 0xFFFFFFFF (-1 in full 32-bit) before sending it to the ALU.
