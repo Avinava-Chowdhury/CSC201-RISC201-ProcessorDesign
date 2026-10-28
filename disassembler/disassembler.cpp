@@ -83,7 +83,12 @@ std::string disassembleWord(uint32_t word, uint32_t address, const std::string& 
     }
 
     const DecodedInstruction& d = *decoded;
-    const OperationDetails* info = findByOpcodeId(d.operation);   // never null: decode succeeded
+    // FPU words must be register-form with bits [11:0] clear; anything else is not a real instruction
+    if (d.operation == OperationCode::FPU && (d.usesConstantNumber || (word & 0x0FFFu) != 0))
+    {
+        return ".word " + hex32(word) + "   ; not a valid instruction";
+    }
+    const OperationDetails* info = findByOpcodeAndFunction(d.operation, d.fpuFunction);   // never null: decode succeeded
     const std::string name = info->nameInAssembly;
 
     switch (info->assemblyFormat)
