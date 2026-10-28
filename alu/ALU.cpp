@@ -6,8 +6,11 @@
 namespace risc201 {
 
 // The Public Interface
-ALUResult ALU::execute(Opcode op, int32_t operand1, int32_t operand2) {
+ALUResult ALU::execute(Opcode op, int32_t operand1, int32_t operand2, uint8_t function) {
     switch (op) {
+        // Floating point (fadd / fsub / fmul / fdiv, chosen by 'function')
+        case Opcode::FPU:
+            return computeFloat(function, (uint32_t)operand1, (uint32_t)operand2);
         // Arithmetic
         case Opcode::ADD: case Opcode::SUB: case Opcode::MUL: case Opcode::DIV:
         case Opcode::MOD: case Opcode::NEG: case Opcode::ABS: case Opcode::MIN:
@@ -421,5 +424,250 @@ ALUResult ALU::computeShift(Opcode op, int32_t a, int32_t b) {
     result.flags.zero = (result.value == 0);
     return result;
 }
+// =============================================================
+// Floating-point unit  (IEEE-754 binary32, round-to-nearest-even)
+// =============================================================
+// Everything below uses integer logic only (no 'float' type), the same way the rest of this ALU
+// is built from bit operations and the carry-lookahead adder.
+//
+//   bit 31      sign
+//   bits 30-23  biased exponent (bias 127)
+//   bits 22-0   fraction (24th "hidden" bit is 1 for normal numbers)
+//
+// Supported: normal numbers, subnormals, +/-0, +/-infinity, NaN (always returned as the quiet
+// NaN 0x7FC00000). Rounding mode is round-to-nearest, ties-to-even.
 
+namespace {
+
+constexpr uint32_t FP_SIGN_MASK = 0x80000000u;
+constexpr uint32_t FP_EXP_MASK  = 0x7F800000u;
+constexpr uint32_t FP_FRAC_MASK = 0x007FFFFFu;
+constexpr uint32_t FP_HIDDEN    = 0x00800000u;
+constexpr uint32_t FP_INF       = 0x7F800000u;
+constexpr uint32_t FP_QNAN      = 0x7FC00000u;
+
+enum class FpClass { ZERO, NORMAL, INF, NAN_VALUE };
+
+// An unpacked operand: value = (-1)^sign * mantissa * 2^(exponent - 23), with bit 23 of 'mantissa'
+// always set for non-zero finite numbers (subnormals are normalized here).
+struct FpUnpacked {
+    bool     sign;
+    int      exponent;
+    uint32_t mantissa;
+    FpClass  kind;
+};
+
+FpUnpacked fpUnpack(uint32_t bits) {
+    FpUnpacked u;
+    u.sign = (bits & FP_SIGN_MASK) != 0;
+    uint32_t expField = (bits & FP_EXP_MASK) >> 23;
+    uint32_t frac     = bits & FP_FRAC_MASK;
+    u.exponent = 0;
+    u.mantissa = 0;
+
+    if (expField == 0xFF) {
+        u.kind = (frac != 0) ? FpClass::NAN_VALUE : FpClass::INF;
+    } else if (expField == 0) {
+        if (frac == 0) {
+            u.kind = FpClass::ZERO;
+        } else {                                  // subnormal: shift left until the hidden bit is set
+            u.kind = FpClass::NORMAL;
+            u.mantissa = frac;
+            u.exponent = -126;
+            while (!(u.mantissa & FP_HIDDEN)) {
+                u.mantissa <<= 1;
+                u.exponent--;
+            }
+        }
+    } else {
+        u.kind = FpClass::NORMAL;
+        u.mantissa = frac | FP_HIDDEN;
+        u.exponent = (int)expField - 127;
+    }
+    return u;
+}
+
+int msbIndex(uint64_t v) {                         // v must be non-zero
+    int i = 63;
+    while (!((v >> i) & 1)) i--;
+    return i;
+}
+
+} // namespace
+
+// 64-bit add/subtract using the 32-bit carry-lookahead adder twice (low half, then high half).
+uint64_t ALU::add64(uint64_t a, uint64_t b) {
+    AdderOutput lo = carryLookaheadAdd((uint32_t)a, (uint32_t)b, false);
+    AdderOutput hi = carryLookaheadAdd((uint32_t)(a >> 32), (uint32_t)(b >> 32), lo.carryOut);
+    return ((uint64_t)hi.sum << 32) | lo.sum;
+}
+
+uint64_t ALU::sub64(uint64_t a, uint64_t b) {
+    uint64_t nb = ~b;
+    AdderOutput lo = carryLookaheadAdd((uint32_t)a, (uint32_t)nb, true);
+    AdderOutput hi = carryLookaheadAdd((uint32_t)(a >> 32), (uint32_t)(nb >> 32), lo.carryOut);
+    return ((uint64_t)hi.sum << 32) | lo.sum;
+}
+
+// Rounds the exact value  mantissa * 2^exponent  to binary32 (round-to-nearest-even) and packs it.
+// The caller guarantees the low bit of 'mantissa' is a sticky/jam bit whenever bits were discarded
+// earlier, and that the mantissa has well over 24 significant bits.
+// Sets 'exception' when the result overflows to infinity.
+uint32_t ALU::fpRoundPack(bool sign, int exponent, uint64_t mantissa, bool& exception) {
+    uint32_t signBits = sign ? FP_SIGN_MASK : 0;
+    if (mantissa == 0) return signBits;
+
+    int p = msbIndex(mantissa);                    // position of the leading 1
+    int leadExp = exponent + p;                    // unbiased exponent of the leading 1
+    int lsbExp = leadExp - 23;                     // weight of the last kept bit (normal numbers)
+    if (lsbExp < -149) lsbExp = -149;              // subnormal range: fixed weight 2^-149
+
+    int shift = lsbExp - exponent;                 // how many low bits are dropped
+    uint64_t kept;
+    if (shift <= 0) {
+        kept = mantissa << (-shift);               // exact, nothing dropped
+    } else if (shift > 64) {
+        kept = 0;                                  // everything is below half an ulp
+    } else {
+        kept = (shift == 64) ? 0 : (mantissa >> shift);
+        bool guard = (shift - 1) < 64 && ((mantissa >> (shift - 1)) & 1);
+        uint64_t belowMask = (shift - 1 >= 64) ? ~0ull : ((1ull << (shift - 1)) - 1);
+        bool sticky = (mantissa & belowMask) != 0;
+        if (guard && (sticky || (kept & 1))) kept++;
+    }
+    if (shift > 64) {
+        // value < 2^-150 -> rounds to zero (exact half-way cannot occur here)
+        return signBits;
+    }
+
+    // bits = ((lsbExp + 149) << 23) + kept  handles the rounding carry, the subnormal->normal
+    // boundary and the normal exponent in one step (see the derivation in the project notes).
+    int64_t bits = ((int64_t)(lsbExp + 149) << 23) + (int64_t)kept;
+    if (bits >= (int64_t)FP_INF) {
+        exception = true;                          // overflow -> infinity
+        return signBits | FP_INF;
+    }
+    return signBits | (uint32_t)bits;
+}
+
+uint32_t ALU::fpAdd(uint32_t a, uint32_t b, bool& exception) {
+    FpUnpacked x = fpUnpack(a), y = fpUnpack(b);
+
+    if (x.kind == FpClass::NAN_VALUE || y.kind == FpClass::NAN_VALUE) return FP_QNAN;
+    if (x.kind == FpClass::INF || y.kind == FpClass::INF) {
+        if (x.kind == FpClass::INF && y.kind == FpClass::INF && x.sign != y.sign) {
+            exception = true;                      // inf - inf is invalid
+            return FP_QNAN;
+        }
+        return (x.kind == FpClass::INF) ? a : b;
+    }
+    if (x.kind == FpClass::ZERO && y.kind == FpClass::ZERO) {
+        return (x.sign && y.sign) ? FP_SIGN_MASK : 0u;   // -0 + -0 = -0, otherwise +0
+    }
+    if (x.kind == FpClass::ZERO) return b;
+    if (y.kind == FpClass::ZERO) return a;
+
+    // Make x the operand with the larger exponent.
+    if (y.exponent > x.exponent || (y.exponent == x.exponent && y.mantissa > x.mantissa)) {
+        FpUnpacked t = x; x = y; y = t;
+    }
+
+    // 29 guard bits below the 24-bit mantissas leave room for the alignment shift.
+    uint64_t mx = (uint64_t)x.mantissa << 29;
+    uint64_t my = (uint64_t)y.mantissa << 29;
+    int d = x.exponent - y.exponent;
+    if (d > 0) {
+        bool lost;
+        if (d >= 64) { lost = (my != 0); my = 0; }
+        else         { lost = (my & ((1ull << d) - 1)) != 0; my >>= d; }
+        if (lost) my |= 1;                         // sticky "jam" into the lowest bit
+    }
+
+    uint64_t sum;
+    bool sign = x.sign;
+    if (x.sign == y.sign) {
+        sum = add64(mx, my);
+    } else {
+        sum = sub64(mx, my);                       // x is the larger magnitude, so this is >= 0
+        if (sum == 0) return 0u;                   // exact cancellation -> +0 (round to nearest)
+    }
+    return fpRoundPack(sign, x.exponent - 23 - 29, sum, exception);
+}
+
+uint32_t ALU::fpMul(uint32_t a, uint32_t b, bool& exception) {
+    FpUnpacked x = fpUnpack(a), y = fpUnpack(b);
+    bool sign = x.sign != y.sign;
+    uint32_t signBits = sign ? FP_SIGN_MASK : 0;
+
+    if (x.kind == FpClass::NAN_VALUE || y.kind == FpClass::NAN_VALUE) return FP_QNAN;
+    if ((x.kind == FpClass::INF && y.kind == FpClass::ZERO) ||
+        (x.kind == FpClass::ZERO && y.kind == FpClass::INF)) {
+        exception = true;                          // 0 * inf is invalid
+        return FP_QNAN;
+    }
+    if (x.kind == FpClass::INF || y.kind == FpClass::INF) return signBits | FP_INF;
+    if (x.kind == FpClass::ZERO || y.kind == FpClass::ZERO) return signBits;
+
+    // 24-bit x 24-bit shift-and-add multiplier -> exact 48-bit product
+    uint64_t product = 0;
+    for (int i = 0; i < 24; i++) {
+        if ((y.mantissa >> i) & 1) product = add64(product, (uint64_t)x.mantissa << i);
+    }
+    return fpRoundPack(sign, x.exponent + y.exponent - 46, product, exception);
+}
+
+uint32_t ALU::fpDiv(uint32_t a, uint32_t b, bool& exception) {
+    FpUnpacked x = fpUnpack(a), y = fpUnpack(b);
+    bool sign = x.sign != y.sign;
+    uint32_t signBits = sign ? FP_SIGN_MASK : 0;
+
+    if (x.kind == FpClass::NAN_VALUE || y.kind == FpClass::NAN_VALUE) return FP_QNAN;
+    if (x.kind == FpClass::INF && y.kind == FpClass::INF) { exception = true; return FP_QNAN; }
+    if (x.kind == FpClass::ZERO && y.kind == FpClass::ZERO) { exception = true; return FP_QNAN; }
+    if (x.kind == FpClass::INF)  return signBits | FP_INF;
+    if (y.kind == FpClass::INF)  return signBits;                 // finite / inf = 0
+    if (y.kind == FpClass::ZERO) { exception = true; return signBits | FP_INF; }   // x / 0 = inf
+    if (x.kind == FpClass::ZERO) return signBits;
+
+    // Restoring division of (mantissaX << 26) by mantissaY: gives a 26-27 bit quotient plus remainder.
+    uint64_t dividend = (uint64_t)x.mantissa << 26;
+    uint64_t divisor  = y.mantissa;
+    uint64_t quotient = 0, remainder = 0;
+    for (int i = 63; i >= 0; i--) {
+        remainder = (remainder << 1) | ((dividend >> i) & 1);
+        if (remainder >= divisor) {
+            remainder = sub64(remainder, divisor);
+            quotient = (quotient << 1) | 1;
+        } else {
+            quotient <<= 1;
+        }
+    }
+    // Shift the quotient up one bit and put the sticky flag in the new lowest bit, so that a
+    // non-zero remainder can never be mistaken for an exact result.
+    uint64_t jammed = (quotient << 1) | (remainder != 0 ? 1 : 0);
+    return fpRoundPack(sign, x.exponent - y.exponent - 26 - 1, jammed, exception);
+}
+
+ALUResult ALU::computeFloat(uint8_t function, uint32_t a, uint32_t b) {
+    ALUResult result;
+    result.value = 0;
+    result.flags.zero = false;
+    result.flags.carry = false;
+    result.flags.overflow = false;
+
+    bool exception = false;
+    uint32_t out = 0;
+    switch (function) {
+        case 0: out = fpAdd(a, b, exception); break;                       // fadd
+        case 1: out = fpAdd(a, b ^ FP_SIGN_MASK, exception); break;        // fsub = a + (-b)
+        case 2: out = fpMul(a, b, exception); break;                       // fmul
+        case 3: out = fpDiv(a, b, exception); break;                       // fdiv
+        default: throw std::invalid_argument("ALU computeFloat: unknown FPU function");
+    }
+
+    result.value = (int32_t)out;
+    result.flags.overflow = exception;
+    result.flags.zero = ((out & ~FP_SIGN_MASK) == 0);                      // +0.0 and -0.0 are both zero
+    return result;
+}
 } // namespace risc201
