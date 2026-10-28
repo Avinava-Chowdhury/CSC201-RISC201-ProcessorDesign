@@ -118,7 +118,7 @@ int parseRegisterName(const std::string& originalName)
 
 namespace
 {
-    constexpr std::array<OperationDetails, 29> kOperationTable = { {
+    constexpr std::array<OperationDetails, 33> kOperationTable = { {
         { "add",  OperationCode::ADD,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
         { "sub",  OperationCode::SUB,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
         { "mul",  OperationCode::MUL,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
@@ -147,7 +147,13 @@ namespace
         { "rol",  OperationCode::ROL,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
         { "ror",  OperationCode::ROR,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
         { "xor",  OperationCode::XOR,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, true  },
-        { "halt", OperationCode::HALT, InstructionLayout::OPERATE, AssemblySyntax::NO_ARGS,        false }
+        { "halt", OperationCode::HALT, InstructionLayout::OPERATE, AssemblySyntax::NO_ARGS,        false },
+        // Floating-point (IEEE-754 binary32). All four share opcode FPU; the last field is the function code.
+        // Register form only (allowsUorHSuffix = false): load constants with `li` first.
+        { "fadd", OperationCode::FPU,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, false, 0 },
+        { "fsub", OperationCode::FPU,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, false, 1 },
+        { "fmul", OperationCode::FPU,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, false, 2 },
+        { "fdiv", OperationCode::FPU,  InstructionLayout::OPERATE, AssemblySyntax::THREE_ARG_MATH, false, 3 }
     } };
 }  // namespace
 
@@ -178,6 +184,22 @@ const OperationDetails* findByOpcodeId(uint8_t numericOpcodeId)
 const OperationDetails* findByOpcodeId(OperationCode opCodeId)
 {
     return findByOpcodeId(static_cast<uint8_t>(opCodeId));
+}
+
+const OperationDetails* findByOpcodeAndFunction(OperationCode opCodeId, uint8_t function)
+{
+    if (opCodeId != OperationCode::FPU)
+    {
+        return findByOpcodeId(opCodeId);
+    }
+    for (const auto& entry : kOperationTable)
+    {
+        if (entry.opCodeId == OperationCode::FPU && entry.function == function)
+        {
+            return &entry;
+        }
+    }
+    return nullptr;
 }
 
 // ---------------------------------------------------------------------
@@ -256,9 +278,13 @@ uint32_t convertToBinary(const DecodedInstruction& instructionStruct)
         word |= (static_cast<uint32_t>(instructionStruct.constantModifier) & MODIFIER_MASK) << MODIFIER_SHIFT;
         word |= (static_cast<uint32_t>(instructionStruct.rawConstantValue) & CONSTANT_MASK);
     }
-    else
+        else
     {
         word |= (static_cast<uint32_t>(instructionStruct.sourceRegister2) & REGISTER_MASK) << SRC2_REG_SHIFT;
+        if (instructionStruct.operation == OperationCode::FPU)
+        {
+            word |= (static_cast<uint32_t>(instructionStruct.fpuFunction) & FPU_FUNCTION_MASK) << FPU_FUNCTION_SHIFT;
+        }
     }
 
     return word;
@@ -293,9 +319,13 @@ std::optional<DecodedInstruction> convertFromBinary(uint32_t rawBinaryWord)
         instruction.constantModifier = static_cast<ImmediateModifier>(modifierBits);
         instruction.rawConstantValue = static_cast<uint16_t>(rawBinaryWord & CONSTANT_MASK);
     }
-    else
+        else
     {
         instruction.sourceRegister2 = static_cast<uint8_t>((rawBinaryWord >> SRC2_REG_SHIFT) & REGISTER_MASK);
+        if (instruction.operation == OperationCode::FPU)
+        {
+            instruction.fpuFunction = static_cast<uint8_t>((rawBinaryWord >> FPU_FUNCTION_SHIFT) & FPU_FUNCTION_MASK);
+        }
     }
 
     return instruction;
@@ -340,6 +370,7 @@ bool modifiesDestinationRegister(OperationCode op)
     case OperationCode::LD:
     case OperationCode::NEG: case OperationCode::ABS:
     case OperationCode::MIN: case OperationCode::MAX:
+    case OperationCode::FPU:
         return true;
     default:
         // CMP only sets flags; NOP/ST/branches/RET/CALL do not write the
