@@ -54,3 +54,4 @@ test: all
 	bash tests/stack_faults.sh
 	bash tests/vertical_tests.sh
 	bash tests/disassembler_roundtrip.sh
+	bash tests/fpu_tests.sh
