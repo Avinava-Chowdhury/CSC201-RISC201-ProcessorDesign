@@ -59,7 +59,7 @@ namespace debugger
         optional<DecodedInstruction> decoded = convertFromBinary(word);
         if (!decoded) return ".word " + hex32(word) + "  (invalid instruction)";
 
-        const OperationDetails* details = findByOpcodeId(decoded->operation);
+         const OperationDetails* details = findByOpcodeAndFunction(decoded->operation, decoded->fpuFunction);
         if (!details) return ".word " + hex32(word) + "  (unknown opcode)";
 
         const string mnemonic = details->nameInAssembly;
