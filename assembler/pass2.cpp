@@ -397,6 +397,7 @@ DecodedInstruction buildInstruction(
 
     DecodedInstruction instr;
     instr.operation = details->opCodeId;
+    instr.fpuFunction = details->function;   // selects fadd/fsub/fmul/fdiv (0 for every other instruction)
 
     switch (details->assemblyFormat)
     {
