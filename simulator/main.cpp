@@ -4,6 +4,7 @@
 #include "../debugger/debugger.h"
 #include "../debugger/timeline.h"
 #include "../debugger/compare.h"
+#include "../debugger/branch_compare.h"
 
 #include <iostream>
 #include <fstream>
@@ -19,6 +20,8 @@ using namespace debugger;
 
 int main(int argc, char** argv)
 {
+    for (int i = 1; i < argc; ++i)
+        if (string(argv[i]) == "--compare-bp") return runBranchBatch(argc, argv);
     bool useVertical = false;
     int startIdx = 1;
 
@@ -429,6 +432,43 @@ int main(int argc, char** argv)
         else if (command == "pipe")
         {
             printPipeline(cpu);
+        }
+        else if (command == "bp")
+        {
+            string action, extra; ss >> action;
+            if (action.empty() || action == "stats" || action == "table") {
+                if (ss >> extra) { branchUsage(); continue; }
+                cpu.branchPredictor.print(cout, action == "table");
+            } else if (action == "on" || action == "off") {
+                if (ss >> extra) { branchUsage(); continue; }
+                cpu.branchPredictor.enabled = action == "on";
+                cpu.reset(); breakpoints.clear(); watchpoints.clear();
+                cout << "Branch prediction " << (cpu.branchPredictor.enabled ? "ON" : "OFF")
+                     << "; CPU reset; predictor cold; breakpoints/watchpoints cleared.\n";
+                cpu.branchPredictor.print(cout);
+            } else if (action == "compare") {
+                BranchCompareOptions opt; opt.control = cpu.controlUnit; opt.aluConfig = cpu.alu.config;
+                string file, token; vector<string> clocks;
+                try {
+                    if (!(ss >> file)) throw invalid_argument("provide a .hex file");
+                    while (ss >> token) {
+                        if (token == "diagram") opt.diagram = true;
+                        else if (token == "repeats") { if (!(ss >> token)) throw invalid_argument("missing repeats"); opt.repeats = parseBranchRepeats(token); }
+                        else if (token == "csv") { if (!(ss >> opt.csvPath)) throw invalid_argument("missing CSV path"); }
+                        else clocks.push_back(token);
+                    }
+                    if (!clocks.empty()) {
+                        if (clocks.size()!=2) throw invalid_argument("provide both clock periods");
+                        size_t n4=0,n6=0; opt.clk4=stod(clocks[0],&n4); opt.clk6=stod(clocks[1],&n6);
+                        if (n4!=clocks[0].size() || n6!=clocks[1].size() || opt.clk4<=0 || opt.clk6<=0)
+                            throw invalid_argument("invalid clock periods");
+                    }
+                    if (!validBranchClocks(opt)) throw invalid_argument("invalid clock periods");
+                    vector<BranchCompareRow> rows{compareBranches(file,opt)};
+                    printBranchComparison(rows[0],opt);
+                    if (!opt.csvPath.empty()) cout << (writeBranchCsv(rows,opt.csvPath,opt) ? "CSV written to " : "Could not write ") << opt.csvPath << '\n';
+                } catch (const exception& e) { cout << e.what() << '\n'; branchUsage(); }
+            } else branchUsage();
         }
         else if (command == "alu")
         {
