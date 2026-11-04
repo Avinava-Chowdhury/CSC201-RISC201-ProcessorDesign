@@ -23,6 +23,7 @@ namespace debugger
         string   error;                 // load error
         uint64_t cycles = 0, retired = 0, stalls = 0, flushes = 0, forwards = 0;
         bool     halted = false, faulted = false, timedOut = false;
+        string   aluTiming;             // measured host time; excluded from deterministic cycle CSV
         string   fault;                 // fault name when faulted
         int32_t  reg[16] = {};
         bool     isEqual = false, isGreater = false;
@@ -71,6 +72,7 @@ namespace debugger
         for (int i = 0; i < 16; i++) r.reg[i] = cpu.reg[i];
         r.isEqual = cpu.flags.IsEqual; r.isGreater = cpu.flags.IsGreaterThan;
         r.dataMem = cpu.dataMem;
+        ostringstream timing; cpu.alu.printTiming(timing); r.aluTiming = timing.str();
         return r;
     }
 
@@ -91,6 +93,7 @@ namespace debugger
         double clk4 = 0, clk6 = 0;      // optional clock periods in ns; 0 = not given
         string csvPath;
         size_t diagramInstr = 24;
+        risc201::ALUConfig aluConfig;
         ControlUnit control = ControlUnit::HORIZONTAL;   // --vertical selects the encoded control store
     };
 
@@ -98,6 +101,7 @@ namespace debugger
     {
         CompareRow row;
         CPU* cpu = new CPU();                       // heap: the CPU object is large
+        cpu->alu.config = opt.aluConfig;
         row.p4 = runProgram(*cpu, path, PipelineMode::STAGE_4, opt.maxCycles, opt.diagram, opt.control);
         if (opt.diagram && row.p4.loaded) { cout << "\n===== " << row.p4.name << " =====\n"; printGantt(*cpu, opt.diagramInstr); }
         row.p6 = runProgram(*cpu, path, PipelineMode::STAGE_6, opt.maxCycles, opt.diagram, opt.control);
@@ -159,6 +163,11 @@ namespace debugger
                         "      pass --clk4 <ns> --clk6 <ns> (or 'compare <f> <clk4> <clk6>') to compare real time.\n";
         }
         cout.unsetf(ios::floatfield); cout << noshowpos;
+        risc201::ALU selected; selected.config = opt.aluConfig; selected.printAlgorithms(cout);
+        for (const auto& r : rows) {
+            cout << "\n" << r.p4.name << " [4-stage]" << r.p4.aluTiming;
+            cout << "\n" << r.p6.name << " [6-stage]" << r.p6.aluTiming;
+        }
     }
 
     inline bool writeCompareCsv(const vector<CompareRow>& rows, const string& path)
@@ -196,6 +205,13 @@ namespace debugger
                 else if (a == "--diagram") opt.diagram = true;
                 else if (a == "--vertical") opt.control = ControlUnit::VERTICAL;
                 else if (a == "--horizontal") opt.control = ControlUnit::HORIZONTAL;
+                else if (a == "--alu-add" || a == "--alu-mul" || a == "--alu-div" || a == "--alu-fmul" || a == "--alu-fdiv") {
+                    risc201::ALU selected; selected.config = opt.aluConfig;
+                    if (!selected.selectAlgorithm(a.substr(6), need(a.c_str()))) {
+                        cerr << "invalid algorithm for " << a << "\n"; return 2;
+                    }
+                    opt.aluConfig = selected.config;
+                }
                 else if (a == "--csv") opt.csvPath = need("--csv");
                 else if (a == "--max-cycles") opt.maxCycles = stoull(need("--max-cycles"));
                 else if (a == "--clk4") opt.clk4 = stod(need("--clk4"));
@@ -210,6 +226,9 @@ namespace debugger
         {
             cerr << "Usage: sim --compare <a.hex> [b.hex ...] [--diagram] [--diagram-instr N] [--csv out.csv]\n"
                     "                [--max-cycles N] [--clk4 <ns> --clk6 <ns>] [--vertical]\n"
+                    "                [--alu-add lookahead|ripple] [--alu-mul booth|iterative]\n"
+                    "                [--alu-div restoring-fast|non-restoring] [--alu-fmul iterative|booth]\n"
+                    "                [--alu-fdiv simple-fast|newton]\n"
                     "       sim                      (no arguments: interactive debugger)\n";
             return 2;
         }
