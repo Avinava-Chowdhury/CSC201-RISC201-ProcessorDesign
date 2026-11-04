@@ -55,7 +55,9 @@ inline void ALU::printAlgorithms(std::ostream& out) const {
         << "  fmul : " << alu_tools_detail::mulName(config.fpMul) << "  [booth | iterative]\n"
         << "  fdiv : " << alu_tools_detail::fpDivName(config.fpDiv) << "  [simple-fast | newton]\n"
         << "  fadd/fsub use align/add/normalize/round with the selected adder.\n"
-        << "  Defaults use optimized restoring division; alternatives are non-restoring and Newton-Raphson.\n";
+        << "  lookahead: packed parallel-prefix carry network; booth: radix-4 (16 iterations).\n"
+        << "  Division: exact shortcuts, aligned restoring, leading-zero-skipping non-restoring.\n"
+        << "  FP restoring: 27 quotient decisions; Newton: 64 seeds + 3 refinements + exact correction.\n";
 }
 
 inline std::string ALU::algorithmLabel(Opcode op, uint8_t function) const {
