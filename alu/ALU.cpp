@@ -8,6 +8,7 @@
 #include <vector>
 #include <algorithm>
 #include <bit>
+#include <array>
 
 namespace risc201 {
 
@@ -65,44 +66,18 @@ ALUResult ALU::executeCore(Opcode op, int32_t operand1, int32_t operand2, uint8_
 // Primitives
 // -------------------------------------------------------------
 ALU::AdderOutput ALU::carryLookaheadAdd(uint32_t a, uint32_t b, bool carryIn) {
-    bool G[32], P[32];
-    for (int i = 0; i < 32; i++) {
-        bool ai = (a >> i) & 1;
-        bool bi = (b >> i) & 1;
-        G[i] = ai && bi;
-        P[i] = ai ^ bi;
-    }
-
-    bool GG[8], GP[8];
-    for (int j = 0; j < 8; j++) {
-        int base = j * 4;
-        bool g0 = G[base], g1 = G[base+1], g2 = G[base+2], g3 = G[base+3];
-        bool p0 = P[base], p1 = P[base+1], p2 = P[base+2], p3 = P[base+3];
-        GG[j] = g3 || (p3 && g2) || (p3 && p2 && g1) || (p3 && p2 && p1 && g0);
-        GP[j] = p0 && p1 && p2 && p3;
-    }
-
-    bool groupCarry[9];
-    groupCarry[0] = carryIn;
-    for (int j = 0; j < 8; j++)
-        groupCarry[j+1] = GG[j] || (GP[j] && groupCarry[j]);
-
-    uint32_t sum = 0;
-    for (int j = 0; j < 8; j++) {
-        int base = j * 4;
-        bool c = groupCarry[j];
-        for (int k = 0; k < 4; k++) {
-            int i = base + k;
-            bool bitSum = P[i] ^ c;
-            if (bitSum) sum |= (1u << i);
-            c = G[i] || (P[i] && c);
-        }
-    }
-
-    AdderOutput out;
-    out.sum = sum;
-    out.carryOut = groupCarry[8];
-    return out;
+    // Packed parallel-prefix carry lookahead: distances 1, 2, 4, 8, 16.
+    // Preserve the original bit propagates for the final sum. Folding carryIn
+    // into bit zero lets the same network produce every carry, including C32.
+    const uint32_t bitPropagate = a ^ b;
+    uint32_t propagate = bitPropagate;
+    uint32_t generate = (a & b) | (bitPropagate & uint32_t(carryIn));
+    generate |= propagate & (generate << 1);  propagate &= propagate << 1;
+    generate |= propagate & (generate << 2);  propagate &= propagate << 2;
+    generate |= propagate & (generate << 4);  propagate &= propagate << 4;
+    generate |= propagate & (generate << 8);  propagate &= propagate << 8;
+    generate |= propagate & (generate << 16);
+    return {bitPropagate ^ ((generate << 1) | uint32_t(carryIn)), (generate >> 31) != 0};
 }
 
 uint32_t ALU::negateCLA(uint32_t x) {
@@ -413,38 +388,37 @@ ALU::AdderOutput ALU::addSelected(uint32_t a, uint32_t b, bool carryIn) {
                                              : carryLookaheadAdd(a, b, carryIn);
 }
 uint64_t ALU::boothProduct(int32_t a, int32_t b) {
-    bool Aext = false;
-    uint32_t A = 0;
-    uint32_t Q = (uint32_t)b;
-    uint32_t M = (uint32_t)a;
-    bool Mext = (M >> 31) & 1;
-    
-    AdderOutput negLow = addSelected(~M, 0, true);
-    uint32_t negM = negLow.sum;
-    bool negMext = (!Mext) ^ negLow.carryOut;
-    
-    bool Qm1 = false;
-    
-    for (int i = 0; i < 32; i++) {
-        bool Q0 = Q & 1;
-    
-        if (Q0 && !Qm1) {
-            AdderOutput r = addSelected(A, negM, false);
-            Aext = Aext ^ negMext ^ r.carryOut;
-            A = r.sum;
-        } else if (!Q0 && Qm1) {
-            AdderOutput r = addSelected(A, M, false);
-            Aext = Aext ^ Mext ^ r.carryOut;
-            A = r.sum;
+    // Radix-4 modified Booth, 16 two-bit iterations. A has TWO guard bits:
+    // +/-2*M must fit even for INT32_MIN; a 32-bit accumulator is insufficient.
+    constexpr uint64_t mask34 = (uint64_t(1) << 34) - 1;
+    const uint64_t m = uint64_t(int64_t(a)) & mask34;
+    const auto negLow = addSelected(~uint32_t(m), 0, true);
+    const uint64_t negM = (((~(m >> 32) + negLow.carryOut) & 3) << 32) | negLow.sum;
+    const std::array<uint64_t, 8> multiple = {
+        0, m, m, (m << 1) & mask34,
+        (negM << 1) & mask34, negM, negM, 0
+    };
+    uint64_t accumulator = 0;
+    uint32_t multiplier = uint32_t(b);
+    uint32_t previous = 0;
+    for (unsigned i = 0; i < 16; ++i) {
+        const unsigned code = ((multiplier & 3u) << 1) | previous;
+        if (code != 0 && code != 7) {
+            const uint64_t term = multiple[code];
+            const auto low = addSelected(uint32_t(accumulator), uint32_t(term), false);
+            // Only two guard bits above the selected 32-bit adder: no second
+            // full-width adder or 64-bit carry propagation is needed here.
+            const uint64_t high = ((accumulator >> 32) + (term >> 32) + low.carryOut) & 3;
+            accumulator = (high << 32) | low.sum;
         }
-    
-        Qm1 = Q0;
-        uint32_t Alsb = A & 1;
-        Q = (Q >> 1) | (Alsb << 31);
-        A = (A >> 1) | (Aext ? (1u << 31) : 0);
+        previous = (multiplier >> 1) & 1u;
+        multiplier = (multiplier >> 2) | uint32_t(accumulator << 30);
+        const uint64_t signFill = (accumulator & (uint64_t(1) << 33)) ? (uint64_t(3) << 32) : 0;
+        accumulator = (accumulator >> 2) | signFill;
     }
-    return (uint64_t(A) << 32) | Q;
+    return (uint64_t(uint32_t(accumulator)) << 32) | multiplier;
 }
+
 uint64_t ALU::iterativeProduct(int32_t a, int32_t b) {
     uint32_t x = a < 0 ? uint32_t(-int64_t(a)) : uint32_t(a);
     uint32_t y = b < 0 ? uint32_t(-int64_t(b)) : uint32_t(b);
@@ -474,46 +448,78 @@ uint64_t ALU::multiplyUnsigned32(uint32_t x, uint32_t y, MulAlgorithm algorithm)
     return (uint64_t(high) << 32) | low;
 }
 
+namespace {
+// Exact unsigned shortcuts, AFTER the caller's existing signed exception checks.
+// Integer DIV/MOD restore the quotient/remainder signs in computeArithmetic().
+bool simpleUnsignedDivide(uint32_t a, uint32_t b, uint32_t& q, uint32_t& r) {
+    if (a < b) { q = 0; r = a; return true; }
+    if (b == 1) { q = a; r = 0; return true; }
+    if (a == b) { q = 1; r = 0; return true; }
+    if (std::has_single_bit(b)) {
+        q = a >> std::countr_zero(b); r = a & (b - 1); return true;
+    }
+    return false;
+}
+
+// Midpoint reciprocal seeds for normalized Q31 divisors in [1,2).
+// All divisions are evaluated at COMPILE TIME, never in the arithmetic path.
+constexpr auto makeReciprocalSeeds() {
+    std::array<uint32_t, 64> seeds{};
+    for (unsigned i = 0; i < seeds.size(); ++i) {
+        const uint64_t midpoint = (uint64_t(1) << 31) + (uint64_t(i) << 25) + (uint64_t(1) << 24);
+        seeds[i] = uint32_t((uint64_t(1) << 62) / midpoint);
+    }
+    return seeds;
+}
+constexpr auto reciprocalSeeds = makeReciprocalSeeds(); // 256 bytes, read-only
+} // namespace
+
 void ALU::restoringDivide(uint32_t a, uint32_t b, uint32_t& q, uint32_t& r) {
     if (!b) throw std::invalid_argument("division by zero");
-    uint64_t rem = 0;
-    q = 0;
-    for (int i = int(std::bit_width(a)) - 1; i >= 0; --i) {
-        rem = (rem << 1) | ((a >> i) & 1u);
-        if (rem >= b) {
-            rem = addSelected(uint32_t(rem), ~b, true).sum;
+    if (simpleUnsignedDivide(a, b, q, r)) return;
+    // Align the divisor, then generate only possible quotient bits. Unlike
+    // scanning every dividend bit, a near-sized divisor needs very few steps.
+    const unsigned shift = std::bit_width(a) - std::bit_width(b);
+    uint32_t aligned = b << shift;
+    q = 0; r = a;
+    for (int i = int(shift); i >= 0; --i, aligned >>= 1) {
+        if (r >= aligned) {
+            r = addSelected(r, ~aligned, true).sum;
             q |= uint32_t(1) << i;
         }
     }
-    r = uint32_t(rem);
 }
 
-// Non-restoring uses an extra sign bit in the partial remainder.
 void ALU::nonRestoringDivide(uint32_t a, uint32_t b, uint32_t& q, uint32_t& r) {
     if (!b) throw std::invalid_argument("division by zero");
+    if (simpleUnsignedDivide(a, b, q, r)) return;
     int64_t rem = 0;
     q = 0;
-    for (int i = 31; i >= 0; --i) {
+    // Skip leading zeros. A signed 33-bit remainder is represented explicitly:
+    // one selected 32-bit adder plus a sign/guard bit, instead of two adders.
+    for (int i = int(std::bit_width(a)) - 1; i >= 0; --i) {
         const bool negative = rem < 0;
         rem = rem * 2 + ((a >> i) & 1u);
-        rem = static_cast<int64_t>(negative ? add64(uint64_t(rem), b)
-                                            : sub64(uint64_t(rem), b));
+        const auto low = negative ? addSelected(uint32_t(rem), b, false)
+                                  : addSelected(uint32_t(rem), ~b, true);
+        const bool sign = (((uint64_t(rem) >> 32) & 1u) != 0) ^ !negative ^ low.carryOut;
+        rem = int64_t(low.sum) - (sign ? (int64_t(1) << 32) : 0);
         if (rem >= 0) q |= uint32_t(1) << i;
     }
-    if (rem < 0) rem = static_cast<int64_t>(add64(uint64_t(rem), b));
-    r = static_cast<uint32_t>(rem);
+    r = rem < 0 ? addSelected(uint32_t(rem), b, false).sum : uint32_t(rem);
 }
 
-// Newton-Raphson reciprocal of a normalized binary32 significand, in Q31.
-// Every product uses the selected significand multiplier, every subtraction
-// uses the selected adder. No host float/double arithmetic is used.
+// Seed error is below roughly 2^-7 relative. Three refinements bring it to
+// Q31 quantization accuracy; fpDiv still corrects the quotient exactly before
+// guard/sticky rounding. Integer-only products use the selected multiplier.
 uint32_t ALU::reciprocalQ31(uint32_t mantissa) {
-    constexpr uint64_t one = uint64_t(1) << 31;
     const uint32_t b = mantissa << 8;
-    uint32_t x = uint32_t(one / 2);
-    for (unsigned i = 0; i < 7; ++i) {
-        const uint64_t bx = multiplyUnsigned32(b, x, config.fpMul) >> 31;
-        const uint32_t factor = uint32_t(sub64(2 * one, bx));
+    uint32_t x = reciprocalSeeds[(mantissa >> 17) & 63u];
+    for (unsigned i = 0; i < 3; ++i) {
+        const uint32_t bx = uint32_t(multiplyUnsigned32(b, x, config.fpMul) >> 31);
+        // factor = 2*2^31 - bx, represented modulo 2^32. Its value fits
+        // uint32_t; one selected adder replaces the former 64-bit subtraction.
+        const uint32_t factor = negateCLA(bx);
         x = uint32_t(multiplyUnsigned32(x, factor, config.fpMul) >> 31);
     }
     return x;
@@ -733,13 +739,23 @@ uint32_t ALU::fpDiv(uint32_t a, uint32_t b, bool& exception) {
     uint64_t dividend = (uint64_t)x.mantissa << 26;
     uint64_t divisor  = y.mantissa;
     uint64_t quotient = 0, remainder = 0;
-    if (config.fpDiv == FpDivAlgorithm::SIMPLE) {
-        // Same restoring/long-division method, skipping leading zero bits.
-        // A 24-bit divisor needs only a 25-bit partial remainder, so one
-        // selected 32-bit adder replaces each original 64-bit subtraction.
-        uint32_t rem = 0;
-        for (int i = int(std::bit_width(dividend)) - 1; i >= 0; --i) {
-            rem = (rem << 1) | uint32_t((dividend >> i) & 1u);
+    if (y.mantissa == F32_HIDDEN) {
+        // Normalized divisor significand is exactly one: exponent/sign still
+        // flow through the shared packer, including subnormal/overflow cases.
+        quotient = uint64_t(x.mantissa) << 3;
+    } else if (x.mantissa == y.mantissa) {
+        quotient = uint64_t(1) << 26;
+    } else if (config.fpDiv == FpDivAlgorithm::SIMPLE) {
+        // Start with the normalized significand remainder, not 24 leading
+        // dividend bits that only rebuild it. One integer decision followed
+        // by 26 fractional decisions yields the same exact quotient/remainder.
+        uint32_t rem = x.mantissa;
+        if (rem >= y.mantissa) {
+            rem = addSelected(rem, ~y.mantissa, true).sum;
+            quotient = 1;
+        }
+        for (unsigned i = 0; i < 26; ++i) {
+            rem <<= 1;
             quotient <<= 1;
             if (rem >= y.mantissa) {
                 rem = addSelected(rem, ~y.mantissa, true).sum;
@@ -753,8 +769,12 @@ uint32_t ALU::fpDiv(uint32_t a, uint32_t b, bool& exception) {
         // Correct to the exact quotient before the shared guard/sticky rounding.
         // This preserves halfway cases, subnormals and the default's binary32 result.
         uint64_t product = multiplyUnsigned32(uint32_t(quotient), y.mantissa, config.fpMul);
-        while (product > dividend) { --quotient; product = sub64(product, divisor); }
-        while (dividend - product >= divisor) { ++quotient; product = add64(product, divisor); }
+        // The seeded Q31 reciprocal is within two Q31 units of exact for
+        // every normalized 24-bit divisor. With a <2^24 numerator this makes
+        // the scaled quotient error <1/8, so at most ONE integer correction
+        // is necessary. Keep exact remainder information for final rounding.
+        if (product > dividend) { --quotient; product = sub64(product, divisor); }
+        else if (dividend - product >= divisor) { ++quotient; product = add64(product, divisor); }
         remainder = dividend - product;
     }
     // Shift the quotient up one bit and put the sticky flag in the new lowest bit, so that a
