@@ -30,6 +30,7 @@ CPU::CPU() {
 }
 
 void CPU::reset() {
+    alu.clearTiming(); // Keep algorithm selections; timings belong to the new run.
     for (int i = 0; i < 16; i++) {
         reg[i] = 0;
     }
