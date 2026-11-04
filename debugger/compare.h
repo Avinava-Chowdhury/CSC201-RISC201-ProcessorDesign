@@ -13,6 +13,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <chrono>
 
 namespace debugger
 {
@@ -23,7 +24,10 @@ namespace debugger
         string   error;                 // load error
         uint64_t cycles = 0, retired = 0, stalls = 0, flushes = 0, forwards = 0;
         bool     halted = false, faulted = false, timedOut = false;
+        double hostUs = 0;
+        risc201::BranchPredictor::Stats branchStats;
         string   aluTiming;             // measured host time; excluded from deterministic cycle CSV
+        string   faultIdentity;         // reason and faulting PC; excludes cycle/stage context
         string   fault;                 // fault name when faulted
         int32_t  reg[16] = {};
         bool     isEqual = false, isGreater = false;
@@ -50,21 +54,30 @@ namespace debugger
     // Runs one program to HALT / fault / cycle limit. 'cpu' is left in its final state so the
     // caller can print its diagram.
     inline RunResult runProgram(CPU& cpu, const string& path, PipelineMode m, uint64_t maxCycles, bool record,
-                                ControlUnit cu = ControlUnit::HORIZONTAL)
+                                ControlUnit cu = ControlUnit::HORIZONTAL, bool prediction = false)
     {
         RunResult r;
         r.name = baseName(path);
         cpu.recordTimeline = record;
         cpu.controlUnit = cu;
+        cpu.branchPredictor.enabled = prediction;
         cpu.setMode(m);
         if (!cpu.loadHex(path, r.error)) return r;
         r.loaded = true;
 
+        const auto hostStart = std::chrono::steady_clock::now();
         while (!cpu.halted && !cpu.faulted && cpu.totalCycles < maxCycles)
         {
             try { cpu.tick(); }
-            catch (const SimException& e) { r.fault = faultName(e.type()); break; }
+            catch (const SimException& e) {
+                r.fault = faultName(e.type());
+                const string report = e.report();
+                r.faultIdentity = report.substr(0, report.find("\n  stage"));
+                break;
+            }
         }
+        r.hostUs = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - hostStart).count();
+        r.branchStats = cpu.branchPredictor.stats;
         r.cycles = cpu.totalCycles;   r.retired = cpu.instructionsRetired;
         r.stalls = cpu.stallCycles;   r.flushes = cpu.branchFlushes;  r.forwards = cpu.forwards;
         r.halted = cpu.halted;        r.faulted = cpu.faulted;
@@ -78,7 +91,9 @@ namespace debugger
 
     inline bool sameArchState(const RunResult& a, const RunResult& b)
     {
-        if (a.faulted != b.faulted || a.halted != b.halted) return false;
+        if (!a.loaded || !b.loaded || a.timedOut || b.timedOut) return false;
+        if (a.faulted != b.faulted || a.halted != b.halted || a.fault != b.fault || a.faultIdentity != b.faultIdentity) return false;
+        if (a.retired != b.retired) return false;
         if (memcmp(a.reg, b.reg, sizeof a.reg) != 0) return false;
         if (a.isEqual != b.isEqual || a.isGreater != b.isGreater) return false;
         return a.dataMem == b.dataMem;
