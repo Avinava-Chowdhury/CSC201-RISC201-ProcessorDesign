@@ -214,6 +214,7 @@ namespace debugger
              << "Stall cycles     : " << cpu.stallCycles << "\n"
              << "Forwards         : " << cpu.forwards << "\n"
              << "Branch flushes   : " << cpu.branchFlushes << "\n";
+        cpu.branchPredictor.print(cout);
     }
 
     inline void printMemory(const CPU& cpu, uint32_t startAddr, int wordCount)
@@ -317,6 +318,10 @@ namespace debugger
              << "  alu compare <op> <a> <b> [repeats] - Compare implementations on these operands\n"
              << "  alu compare all [repeats] - Compare all arithmetic families on sample operands\n"
              << "                      FP operands are IEEE-754 hexadecimal words, e.g. 0x3fc00000\n"
+             << "  bp [stats|table]    - Show 2-bit predictor statistics or all counters\n"
+             << "  bp on|off           - Select prediction; reset CPU and clear break/watchpoints\n"
+             << "  bp compare <f.hex> [diagram] [clk4 clk6] [repeats N] [csv path]\n"
+             << "                      - Compare 4/6-stage OFF/ON, output, cycles, speed and full state\n"
              << "  stats               - Show performance statistics and ALU software timing\n"
              << "  diagram [n] [w]     - Pipeline diagram: instruction x cycle chart (n instructions, w cycles per block)\n"
              << "  cycles [rows]       - Cycle-by-stage table\n"
