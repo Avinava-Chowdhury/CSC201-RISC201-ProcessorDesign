@@ -430,6 +430,66 @@ int main(int argc, char** argv)
         {
             printPipeline(cpu);
         }
+        else if (command == "alu")
+        {
+            string family, name, extra;
+            ss >> family;
+            if (family.empty() || family == "list") cpu.alu.printAlgorithms(cout);
+            else if (family == "timing") {
+                ss >> name;
+                if (name == "reset") cpu.alu.clearTiming();
+                else if (name == "on") cpu.alu.timingEnabled = true;
+                else if (name == "off") cpu.alu.timingEnabled = false;
+                else if (!name.empty()) { cout << "Usage: alu timing [on|off|reset]\n"; continue; }
+                cout << "ALU timing measurement " << (cpu.alu.timingEnabled ? "ON" : "OFF") << "\n";
+                cpu.alu.printTiming(cout);
+            } else if (family == "compare") {
+                string operation, aText, bText, repetitions;
+                unsigned count = 1000;
+                if (!(ss >> operation)) {
+                    cout << "Usage: alu compare <add|sub|mul|div|mod|fadd|fsub|fmul|fdiv> <a> <b> [repeats]\n"
+                         << "       alu compare all [repeats] (representative integer/FP operands)\n";
+                    continue;
+                }
+                auto parseCount = [&](const string& token) {
+                    size_t used = 0;
+                    const auto value = stoull(token, &used, 10);
+                    if (used != token.size() || value == 0 || value > 1000000)
+                        throw invalid_argument("repeats must be 1..1000000");
+                    count = static_cast<unsigned>(value);
+                };
+                auto parseOperand = [](const string& token) -> int32_t {
+                    size_t used = 0;
+                    const auto value = stoll(token, &used, 0);
+                    if (used != token.size() || value < INT32_MIN || value > int64_t(UINT32_MAX))
+                        throw invalid_argument("operand must be a signed 32-bit value or unsigned 32-bit bit pattern");
+                    return static_cast<int32_t>(static_cast<uint32_t>(value));
+                };
+                try {
+                    if (operation == "all") {
+                        if (ss >> repetitions) parseCount(repetitions);
+                        if (ss >> extra) throw invalid_argument("unexpected argument");
+                        for (const auto& op : {"add", "sub", "mul", "div", "mod", "fadd", "fsub", "fmul", "fdiv"}) {
+                            const bool fp = op[0] == 'f';
+                            if (!cpu.alu.compareAlgorithms(cout, op, fp ? 0x3fc00000 : 12345,
+                                                           fp ? 0x3f400000 : 7, count))
+                                cout << "ALU comparison failed for " << op << "\n";
+                        }
+                    } else {
+                        if (!(ss >> aText >> bText)) throw invalid_argument("supply two operands");
+                        if (ss >> repetitions) parseCount(repetitions);
+                        if (ss >> extra) throw invalid_argument("unexpected argument");
+                        if (!cpu.alu.compareAlgorithms(cout, operation, parseOperand(aText), parseOperand(bText), count))
+                            cout << "ALU comparison failed or operation is unsupported.\n";
+                    }
+                } catch (const exception& e) { cout << "ALU comparison error: " << e.what() << "\n"; }
+            } else if (ss >> name && !(ss >> extra) && cpu.alu.selectAlgorithm(family, name)) {
+                cpu.alu.printAlgorithms(cout);
+                cout << "Selection applies to subsequent ALU calls. Reset before re-running a whole program.\n";
+            } else {
+                cout << "Invalid ALU selection. Use 'alu list' for choices.\n";
+            }
+        }
         else if (command == "micro")
         {
             printMicro(cpu);
@@ -468,6 +528,7 @@ int main(int argc, char** argv)
         else if (command == "stats")
         {
             printStats(cpu);
+            cpu.alu.printTiming(cout);
         }
         else if (command == "regs")
         {
@@ -564,6 +625,8 @@ int main(int argc, char** argv)
             string file, a1;
             if (!(ss >> file)) { cout << "Usage: compare <file.hex> [diagram] [clk4_ns clk6_ns]\n"; continue; }
             CompareOptions opt;
+            opt.aluConfig = cpu.alu.config;
+            opt.control = cpu.controlUnit;
             double c4 = 0, c6 = 0;
             vector<string> rest;
             while (ss >> a1) rest.push_back(a1);
@@ -585,6 +648,8 @@ int main(int argc, char** argv)
         {
             cout << "Unknown command: " << command << " (type 'help')\n";
         }
+        if (cpu.alu.timingEnabled && (command == "step" || command == "tick" || command == "continue"))
+            cpu.alu.printTiming(cout);
     }
 
     return 0;
