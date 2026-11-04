@@ -30,6 +30,7 @@ CPU::CPU() {
 }
 
 void CPU::reset() {
+    branchPredictor.reset(); // cold counters/stats; keep enabled selection
     alu.clearTiming(); // Keep algorithm selections; timings belong to the new run.
     for (int i = 0; i < 16; i++) {
         reg[i] = 0;
@@ -311,6 +312,7 @@ void CPU::do_IF() {
         pc / risc201::BYTES_PER_WORD >= programWords) {
         if_id.active = true;
         if_id.pc = pc;
+        if_id.prediction = {pc + risc201::BYTES_PER_WORD, false};
         if_id.instruction = 0;
         if_id.pf = PendingFault{};
         if_id.pf.pending = true;
@@ -328,7 +330,8 @@ void CPU::do_IF() {
     if_id.pf = PendingFault{};
     if_id.active = true;
 
-    pc += risc201::BYTES_PER_WORD;
+    if_id.prediction = branchPredictor.predict(pc, if_id.instruction);
+    pc = if_id.prediction.nextPC;
 }
 
 // STAGE 2: INSTRUCTION DECODE & MICROPROGRAM DISPATCH (ID)
@@ -362,6 +365,7 @@ void CPU::do_ID() {
     // Latch values into ID_EX
     id_ex.active = true;
     id_ex.pc = if_id.pc;
+    id_ex.prediction = if_id.prediction;
     id_ex.decoded = instr;
     id_ex.val1 = op1;
     id_ex.val2 = op2;
@@ -381,11 +385,11 @@ void CPU::do_EX() {
 
     ExOut out = execCore(id_ex.decoded, id_ex.pc, id_ex.uPC, id_ex.val1, id_ex.val2, id_ex.val3);
 
-    // flush
-    if (out.take) {
-        pc = out.target;
+    // Only conditional branches use the predictor. OFF preserves every original flush.
+    if (resolvePrediction(id_ex.decoded, id_ex.pc, id_ex.prediction, out)) {
+        pc = out.take ? out.target : id_ex.pc + risc201::BYTES_PER_WORD;
         if_id.active = false;
-        branchFlushes++; // 1 stage (IF) was flushed
+        branchFlushes++; // one younger latch (IF/ID) was flushed
     }
     // HALT executed: discard everything younger
     if (fetchStopped) {
@@ -405,6 +409,17 @@ void CPU::do_EX() {
     
     // If store instruction, the value we want to write into RAM was read as val3 (rd)
     ex_memwb.store_data = id_ex.val3;
+}
+
+// Resolve after execCore validates the actual branch target. A speculative target
+// is never validated early: wrong-path fetch/decode faults remain deferred.
+bool CPU::resolvePrediction(const risc201::DecodedInstruction& d, uint32_t branchPC,
+                            const risc201::BranchPrediction& prediction, const ExOut& out) {
+    if (!risc201::isConditionalBranch(d.operation)) return out.take;
+    const uint32_t actual = out.take ? out.target : branchPC + risc201::BYTES_PER_WORD;
+    const bool flush = branchPredictor.enabled ? prediction.nextPC != actual : out.take;
+    branchPredictor.resolve(branchPC, out.take, prediction, actual, flush);
+    return flush;
 }
 
 // Shared execute core for both pipelines: fetches the EX microword and performs
@@ -511,6 +526,7 @@ void CPU::do_ID_6() {
 
     id_rr.active = true;
     id_rr.pc = if_id.pc;
+    id_rr.prediction = if_id.prediction;
     id_rr.uPC = 0;
     id_rr.decoded = risc201::DecodedInstruction{};
     id_rr.pf = PendingFault{};
@@ -562,6 +578,7 @@ void CPU::do_RR_6() {
 
     rr_ex.active = true;
     rr_ex.pc = id_rr.pc;
+    rr_ex.prediction = id_rr.prediction;
     rr_ex.decoded = id_rr.decoded;
     rr_ex.val1 = op1;
     rr_ex.val2 = op2;
@@ -577,9 +594,9 @@ void CPU::do_EX_6() {
 
     ExOut out = execCore(rr_ex.decoded, rr_ex.pc, rr_ex.uPC, rr_ex.val1, rr_ex.val2, rr_ex.val3);
 
-    // Handle branch redirection and flushes
-    if (out.take) {
-        pc = out.target;
+    // Recover both predicted-T/actual-N and predicted-N/actual-T mistakes.
+    if (resolvePrediction(rr_ex.decoded, rr_ex.pc, rr_ex.prediction, out)) {
+        pc = out.take ? out.target : rr_ex.pc + risc201::BYTES_PER_WORD;
         if_id.active = false;
         id_rr.active = false;
         branchFlushes++;
@@ -798,7 +815,7 @@ void CPU::tick() {
 
         if (stallRequest) stallCycles++;
 
-        // a taken branch or a HALT in EX squashed the younger instructions this cycle
+        // A recovery redirect (or original unconditional redirect) or HALT squashed younger instructions.
         if (rec) recordCycle(pre, branchFlushes > flushesBefore || (fetchStopped && !fetchStoppedBefore));
         
     // Khushi: on any fault, freeze the CPU, attach the stage/cycle/microPC, and rethrow
