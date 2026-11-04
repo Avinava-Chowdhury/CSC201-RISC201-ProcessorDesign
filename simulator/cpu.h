@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <iosfwd>
 #include "alu.h"
+#include "branch_predictor.h"
 #include "isa.h"
 #include "sim_exception.h"
 #include "horizontal_microcode.h"
@@ -24,6 +25,7 @@ struct PendingFault {
 
 // PIPELINE LATCHES to store intermediate values at each stage
 struct IF_ID_Latch {
+    risc201::BranchPrediction prediction; // original fetch-time decision
     bool active = false; 
     uint32_t pc = 0;
     uint32_t instruction = 0;
@@ -32,6 +34,7 @@ struct IF_ID_Latch {
 };
 
 struct ID_EX_Latch {
+    risc201::BranchPrediction prediction; // original fetch-time decision
     bool active = false; 
     uint32_t pc = 0;
     uint8_t uPC = 0;                     // micro-address of this instruction's next microword
@@ -56,6 +59,7 @@ struct EX_MEMWB_Latch {
 
 // 6-Stage Pipeline Latches
 struct ID_RR_Latch {
+    risc201::BranchPrediction prediction; // original fetch-time decision
     bool active = false;
     uint32_t pc = 0;
     uint8_t uPC = 0;                     // micro-address of this instruction's next microword
@@ -64,6 +68,7 @@ struct ID_RR_Latch {
 };
 
 struct RR_EX_Latch {
+    risc201::BranchPrediction prediction; // original fetch-time decision
     bool active = false;
     uint32_t pc = 0;
     uint8_t uPC = 0;                     // micro-address of this instruction's next microword
@@ -170,6 +175,7 @@ public:
     uint8_t dispatch[32] = {};      // opcode -> entry micro-address of that opcode's routine
     ControlUnit controlUnit = ControlUnit::HORIZONTAL;   // which store microFetch/peek read from
     
+    risc201::BranchPredictor branchPredictor;
     risc201::ALU alu; // Isolated ALU class
 
     PipelineMode mode = PipelineMode::STAGE_4;
@@ -237,6 +243,8 @@ public:
     void checkStackWrite(uint32_t addr, uint32_t faultPc) const;
 
     // Pipeline stages 
+    bool resolvePrediction(const risc201::DecodedInstruction& d, uint32_t branchPC,
+                           const risc201::BranchPrediction& prediction, const ExOut& out);
     void do_MEM_WB();
     void do_EX();
     void do_ID();
